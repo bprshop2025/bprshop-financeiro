@@ -618,7 +618,7 @@ async function addLancamento() {
   const tipo = document.getElementById('f-tipo').value;
   const cat = document.getElementById('f-cat').value;
   const plat = document.getElementById('f-plat').value;
-  const valor = parseFloat(document.getElementById('f-valor').value);
+  const valor = parseFloat(document.getElementById('f-valor').value.replace(',', '.'));
   const descricao = document.getElementById('f-desc').value.trim();
   if (!data || isNaN(valor) || valor <= 0) { toast('Preencha data e valor.', 'error'); return; }
   const dt = new Date(data + 'T12:00:00');
@@ -642,7 +642,7 @@ async function addRepasse() {
   const plat = document.getElementById('r-plat').value;
   const dvenda = document.getElementById('r-dvenda').value;
   const drep = document.getElementById('r-drep').value;
-  const valor = parseFloat(document.getElementById('r-valor').value);
+  const valor = parseFloat(document.getElementById('r-valor').value.replace(',', '.'));
   if (!dvenda || !drep || isNaN(valor) || valor <= 0) { toast('Preencha todos os campos.', 'error'); return; }
   const { error } = await sb.from('repasses').insert({ plat, dvenda, drep, valor, recebido: false });
   if (error) { toast('Erro: ' + error.message, 'error'); return; }
