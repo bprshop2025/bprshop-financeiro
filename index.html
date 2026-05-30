@@ -243,6 +243,15 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   padding: 0.75rem 1.25rem; border-top: 1px solid var(--border);
   margin-top: auto;
 }
+
+@media print {
+  .sidebar, .btn, .filters, .page-header button { display: none !important; }
+  .main { margin-left: 0 !important; }
+  .panel { border: 1px solid #ddd !important; background: white !important; color: black !important; }
+  body { background: white !important; color: black !important; }
+  .card { background: #f5f5f5 !important; color: black !important; border: 1px solid #ddd !important; }
+  .card-value, .plat-val, .plat-name { color: black !important; }
+}
 </style>
 </head>
 <body>
@@ -301,6 +310,14 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     <button class="nav-item" onclick="showTab('repasses',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
       Repasses
+    </button>
+    <button class="nav-item" onclick="showTab('relatorio',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Relatório
+    </button>
+    <button class="nav-item" onclick="showTab('log',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Log
     </button>
   </nav>
   <div class="conn-badge">
@@ -437,6 +454,48 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </section>
 
+<!-- RELATORIO -->
+<section id="tab-relatorio" class="section">
+  <div class="page-header">
+    <div><div class="page-title">Relatório Mensal</div><div class="page-sub" id="rel-sub">Resumo completo do mês</div></div>
+    <button class="btn btn-ghost" onclick="imprimirRelatorio()" style="display:flex;align-items:center;gap:6px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Imprimir / PDF
+    </button>
+  </div>
+  <div id="relatorio-content">
+    <div class="cards" id="rel-cards" style="margin-bottom:1rem"></div>
+    <div class="two-col">
+      <div class="panel" id="rel-entradas"></div>
+      <div class="panel" id="rel-saidas"></div>
+    </div>
+    <div class="panel" id="rel-plataformas"></div>
+    <div class="panel" id="rel-resultado"></div>
+  </div>
+</section>
+
+<!-- LOG -->
+<section id="tab-log" class="section">
+  <div class="page-header">
+    <div><div class="page-title">Log de Alterações</div><div class="page-sub">Histórico de todas as ações no sistema</div></div>
+    <button class="btn btn-ghost btn-sm" onclick="limparLog()" style="color:var(--red)">Limpar log</button>
+  </div>
+  <div class="panel" style="padding:0;overflow:hidden">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th>
+        </tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+      <div id="log-empty" class="empty" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Nenhuma ação registrada ainda.
+      </div>
+    </div>
+  </div>
+</section>
+
 </main>
 </div>
 
@@ -485,6 +544,8 @@ function showTab(id, btn) {
   btn.classList.add('active');
   if (id === 'extrato') renderExtrato();
   if (id === 'repasses') renderRepasses();
+  if (id === 'log') renderLog();
+  if (id === 'relatorio') renderRelatorio();
 }
 
 function updateCats() {
@@ -669,6 +730,7 @@ async function addLancamento() {
   const { error } = await sb.from('lancamentos').insert({ data, tipo, cat, plat, valor, descricao, mes: dt.getMonth(), ano: dt.getFullYear() });
   if (error) { console.error("Supabase error:", JSON.stringify(error)); toast("Erro: " + error.message, "error"); return; }
   toast('Lançamento salvo!');
+  registrarLog("Lançamento adicionado", `${tipo} | ${cat} | ${plat} | ${fmtBRL(valor)} | ${descricao||'sem descrição'}`);
   document.getElementById('f-valor').value = '';
   document.getElementById('f-desc').value = '';
   await render();
@@ -676,8 +738,10 @@ async function addLancamento() {
 
 async function delLancamento(id) {
   if (!confirm('Excluir este lançamento?')) return;
+  const lDel = lancamentos.find(l => l.id === id);
   await sb.from('lancamentos').delete().eq('id', id);
   toast('Lançamento excluído.');
+  if (lDel) registrarLog("Lançamento excluído", `${lDel.tipo} | ${lDel.cat} | ${fmtBRL(parseFloat(lDel.valor))}`);
   await render();
   renderExtrato();
 }
@@ -710,7 +774,116 @@ async function delRepasse(id) {
 }
 
 
+// LOG DE ALTERACOES
+function registrarLog(acao, detalhes) {
+  const usuario = sessionStorage.getItem("bpr_usuario") || "sistema";
+  const logs = JSON.parse(localStorage.getItem("bpr_log") || "[]");
+  logs.unshift({
+    dt: new Date().toLocaleString("pt-BR"),
+    usuario,
+    acao,
+    detalhes
+  });
+  if (logs.length > 200) logs.pop();
+  localStorage.setItem("bpr_log", JSON.stringify(logs));
+  if (document.getElementById("tab-log").classList.contains("active")) renderLog();
+}
+
+function renderLog() {
+  const logs = JSON.parse(localStorage.getItem("bpr_log") || "[]");
+  const body = document.getElementById("log-body");
+  const empty = document.getElementById("log-empty");
+  if (!logs.length) { body.innerHTML = ""; empty.style.display = "block"; return; }
+  empty.style.display = "none";
+  const acaoCor = { "Lançamento adicionado": "var(--green)", "Lançamento excluído": "var(--red)", "Repasse adicionado": "var(--blue)", "Repasse excluído": "var(--red)", "Login": "var(--ml)" };
+  body.innerHTML = logs.map(l => `<tr>
+    <td style="font-size:11px;color:var(--text2);white-space:nowrap">${l.dt}</td>
+    <td><span class="badge badge-gray">${l.usuario}</span></td>
+    <td style="font-size:12px;font-weight:500;color:${acaoCor[l.acao]||'var(--text)'}">${l.acao}</td>
+    <td style="font-size:12px;color:var(--text2)">${l.detalhes}</td>
+  </tr>`).join("");
+}
+
+function limparLog() {
+  if (!confirm("Tem certeza que deseja limpar todo o log?")) return;
+  localStorage.removeItem("bpr_log");
+  renderLog();
+  toast("Log limpo!");
+}
+
+// RELATORIO MENSAL
+function renderRelatorio() {
+  const mes = getMes(); const ano = getAno();
+  const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  document.getElementById("rel-sub").textContent = `${meses[mes]} de ${ano}`;
+
+  const ent = lancamentos.filter(l => l.tipo === "ENTRADA").reduce((s,l) => s + parseFloat(l.valor), 0);
+  const sai = lancamentos.filter(l => l.tipo === "SAÍDA").reduce((s,l) => s + parseFloat(l.valor), 0);
+  const res = ent - sai;
+  const margem = ent > 0 ? ((res / ent) * 100).toFixed(1) : 0;
+
+  document.getElementById("rel-cards").innerHTML = `
+    <div class="card"><div class="card-label">Entradas líquidas</div><div class="card-value" style="color:var(--green)">${fmtBRL(ent)}</div></div>
+    <div class="card red"><div class="card-label">Total saídas</div><div class="card-value">${fmtBRL(sai)}</div></div>
+    <div class="card ${res>=0?"green":"red"}"><div class="card-label">Resultado</div><div class="card-value" style="color:${res>=0?"var(--green)":"var(--red)"}">${fmtBRL(res)}</div></div>
+    <div class="card"><div class="card-label">Margem</div><div class="card-value" style="color:${margem>=0?"var(--green)":"var(--red)"}">${margem}%</div></div>
+  `;
+
+  // Entradas por categoria
+  const entMap = {};
+  lancamentos.filter(l => l.tipo === "ENTRADA").forEach(l => { entMap[l.cat] = (entMap[l.cat]||0) + parseFloat(l.valor); });
+  const entRows = Object.entries(entMap).sort((a,b)=>b[1]-a[1]).map(([cat,val]) =>
+    `<div class="plat-row"><div class="plat-name" style="font-size:12px">${cat}</div><div class="plat-val" style="color:var(--green);font-size:13px">${fmtBRL(val)}</div></div>`
+  ).join("") || "<div class='empty' style='padding:1rem'>Sem entradas</div>";
+  document.getElementById("rel-entradas").innerHTML = `<div class="panel-header"><span class="panel-title">📥 Entradas por categoria</span></div>${entRows}`;
+
+  // Saídas por categoria
+  const saiMap = {};
+  lancamentos.filter(l => l.tipo === "SAÍDA").forEach(l => { saiMap[l.cat] = (saiMap[l.cat]||0) + parseFloat(l.valor); });
+  const saiRows = Object.entries(saiMap).sort((a,b)=>b[1]-a[1]).map(([cat,val]) =>
+    `<div class="plat-row"><div class="plat-name" style="font-size:12px">${cat}</div><div class="plat-val" style="color:var(--red);font-size:13px">${fmtBRL(val)}</div></div>`
+  ).join("") || "<div class='empty' style='padding:1rem'>Sem saídas</div>";
+  document.getElementById("rel-saidas").innerHTML = `<div class="panel-header"><span class="panel-title">📤 Saídas por categoria</span></div>${saiRows}`;
+
+  // Por plataforma
+  const plats = ["Mercado Livre","Shopee","TikTok Shop"];
+  const platRows = plats.map(p => {
+    const pe = lancamentos.filter(l=>l.plat===p&&l.tipo==="ENTRADA").reduce((s,l)=>s+parseFloat(l.valor),0);
+    const ps = lancamentos.filter(l=>l.plat===p&&l.tipo==="SAÍDA").reduce((s,l)=>s+parseFloat(l.valor),0);
+    const pl = pe - ps;
+    return `<div class="plat-row">
+      <div class="plat-name">${p}</div>
+      <div style="display:flex;gap:2rem;text-align:right">
+        <div><div style="font-size:10px;color:var(--text2)">Entradas</div><div style="color:var(--green);font-weight:500;font-size:13px">${fmtBRL(pe)}</div></div>
+        <div><div style="font-size:10px;color:var(--text2)">Saídas</div><div style="color:var(--red);font-weight:500;font-size:13px">${fmtBRL(ps)}</div></div>
+        <div><div style="font-size:10px;color:var(--text2)">Resultado</div><div style="color:${pl>=0?"var(--green)":"var(--red)"};font-weight:500;font-size:13px">${fmtBRL(pl)}</div></div>
+      </div>
+    </div>`;
+  }).join("");
+  document.getElementById("rel-plataformas").innerHTML = `<div class="panel-header"><span class="panel-title">🏪 Resultado por plataforma</span></div>${platRows}`;
+
+  // Resultado final
+  document.getElementById("rel-resultado").innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+      <div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:4px">Resultado final do mês</div>
+        <div style="font-size:32px;font-weight:600;color:${res>=0?"var(--green)":"var(--red)"};font-family:'DM Mono',monospace">${fmtBRL(res)}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px">${res>=0?"Lucro":"Prejuízo"} de ${Math.abs(margem)}% sobre as entradas</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:var(--text2)">${lancamentos.length} lançamentos registrados</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Gerado em ${new Date().toLocaleString("pt-BR")}</div>
+      </div>
+    </div>
+  `;
+}
+
+function imprimirRelatorio() {
+  window.print();
+}
+
 // LOGIN
+
 const USUARIOS = {
   "bprshop": "Bpr@032026",
   "admin": "Bpr@032026"
@@ -722,7 +895,9 @@ function doLogin() {
   const err = document.getElementById("l-error");
   if (USUARIOS[user] && USUARIOS[user] === pass) {
     sessionStorage.setItem("bpr_auth", "1");
+    sessionStorage.setItem("bpr_usuario", user);
     document.getElementById("login-screen").style.display = "none";
+    registrarLog("Login", `Usuário ${user} entrou no sistema`);
     initApp();
   } else {
     err.style.display = "block";
