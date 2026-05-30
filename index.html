@@ -194,6 +194,36 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .empty { text-align: center; padding: 2.5rem; color: var(--text3); font-size: 13px; }
 .empty svg { width: 32px; height: 32px; opacity: 0.3; display: block; margin: 0 auto 8px; }
 
+
+/* LOGIN */
+.login-screen {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.login-box {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 2.5rem; width: 100%; max-width: 380px;
+}
+.login-logo { text-align: center; margin-bottom: 2rem; }
+.login-logo-title { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+.login-logo-sub { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.login-fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.login-fg label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+.login-fg input {
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text); padding: 10px 14px; border-radius: var(--radius-sm);
+  font-size: 14px; font-family: inherit; transition: border 0.15s; width: 100%;
+}
+.login-fg input:focus { outline: none; border-color: var(--blue); }
+.login-btn {
+  width: 100%; padding: 11px; border-radius: var(--radius-sm);
+  background: var(--text); color: var(--bg); border: none;
+  font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px;
+  font-family: inherit; transition: opacity 0.15s;
+}
+.login-btn:hover { opacity: 0.88; }
+.login-error { color: var(--red); font-size: 12px; text-align: center; margin-top: 10px; display: none; }
 /* TOAST */
 .toast {
   position: fixed; bottom: 2rem; right: 2rem; z-index: 999;
@@ -217,6 +247,20 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 </head>
 <body>
 
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-title">BPR Shop</div>
+      <div class="login-logo-sub">Gestão Financeira — Acesso Restrito</div>
+    </div>
+    <div class="login-fg"><label>Usuário</label><input type="text" id="l-user" placeholder="Digite seu usuário" autocomplete="username"></div>
+    <div class="login-fg"><label>Senha</label><input type="password" id="l-pass" placeholder="Digite sua senha" autocomplete="current-password"></div>
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="l-error">Usuário ou senha incorretos.</div>
+  </div>
+</div>
 <div class="shell">
 <!-- SIDEBAR -->
 <aside class="sidebar">
@@ -665,6 +709,34 @@ async function delRepasse(id) {
   await loadData(); renderRepasses();
 }
 
+
+// LOGIN
+const USUARIOS = {
+  "bprshop": "Bpr@032026",
+  "admin": "Bpr@032026"
+};
+
+function doLogin() {
+  const user = document.getElementById("l-user").value.trim();
+  const pass = document.getElementById("l-pass").value;
+  const err = document.getElementById("l-error");
+  if (USUARIOS[user] && USUARIOS[user] === pass) {
+    sessionStorage.setItem("bpr_auth", "1");
+    document.getElementById("login-screen").style.display = "none";
+    initApp();
+  } else {
+    err.style.display = "block";
+    document.getElementById("l-pass").value = "";
+  }
+}
+
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && document.getElementById("login-screen").style.display !== "none") {
+    doLogin();
+  }
+});
+
+function initApp() {
 // INIT
 updateCats();
 const today = new Date();
@@ -678,6 +750,13 @@ render().catch(e => {
   document.getElementById('conn-dot').className = 'status-dot dot-red';
   document.getElementById('conn-txt').textContent = 'Sem conexão';
 });
+}
+
+// Verificar se já está logado
+if (sessionStorage.getItem("bpr_auth") === "1") {
+  document.getElementById("login-screen").style.display = "none";
+  initApp();
+}
 </script>
 </body>
 </html>
