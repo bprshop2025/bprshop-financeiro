@@ -321,7 +321,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
           <option value="Geral">Geral</option>
         </select>
       </div>
-      <div class="fg"><label>Valor (R$)</label><input type="number" id="f-valor" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="fg"><label>Valor (R$)</label><input type="text" id="f-valor" placeholder="Ex: 1700,00"></div>
       <div class="fg"><label>Descrição</label><input type="text" id="f-desc" placeholder="Ex: Repasse semana 1"></div>
     </div>
     <button class="btn btn-primary" onclick="addLancamento()">+ Adicionar lançamento</button>
@@ -373,7 +373,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       </div>
       <div class="fg"><label>Data da venda</label><input type="date" id="r-dvenda"></div>
       <div class="fg"><label>Previsão repasse</label><input type="date" id="r-drep"></div>
-      <div class="fg"><label>Valor esperado (R$)</label><input type="number" id="r-valor" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="fg"><label>Valor esperado (R$)</label><input type="text" id="r-valor" placeholder="Ex: 1700,00"></div>
     </div>
     <button class="btn btn-primary" onclick="addRepasse()">+ Adicionar repasse</button>
   </div>
@@ -623,7 +623,7 @@ async function addLancamento() {
   if (!data || isNaN(valor) || valor <= 0) { toast('Preencha data e valor.', 'error'); return; }
   const dt = new Date(data + 'T12:00:00');
   const { error } = await sb.from('lancamentos').insert({ data, tipo, cat, plat, valor, descricao, mes: dt.getMonth(), ano: dt.getFullYear() });
-  if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+  if (error) { console.error("Supabase error:", JSON.stringify(error)); toast("Erro: " + error.message, "error"); return; }
   toast('Lançamento salvo!');
   document.getElementById('f-valor').value = '';
   document.getElementById('f-desc').value = '';
