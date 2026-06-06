@@ -812,16 +812,17 @@ async function renderChart() {
   chartInst = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets: [
-      { label: 'Entradas', data: entData, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: '#22c55e', fill: true, tension: 0.4 },
-      { label: 'Saídas', data: saiData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: '#ef4444', fill: true, tension: 0.4 }
+      { label: 'Entradas', data: entData, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#22c55e', fill: true, tension: 0.3 },
+      { label: 'Saídas', data: saiData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#ef4444', fill: true, tension: 0.3 }
     ]},
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#888', font: { size: 12 } } } },
+      plugins: { legend: { labels: { color: '#888', font: { size: 11 }, boxWidth: 12 } } },
       scales: {
-        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#888', font: { size: 11 } } },
-        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#888', font: { size: 11 }, callback: v => 'R$' + (v/1000).toFixed(0) + 'k' } }
-      }
+        x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#888', font: { size: 11 }, callback: v => 'R$' + (v/1000).toFixed(1) + 'k' }, beginAtZero: true }
+      },
+      interaction: { intersect: false, mode: 'index' }
     }
   });
 }
@@ -1291,18 +1292,19 @@ async function renderAnual() {
     data: {
       labels: meses,
       datasets: [
-        { label: "Entradas", data: entMes.map(v => Math.round(v)), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.1)", borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: "#22c55e", fill: true, tension: 0.4 },
-        { label: "Saídas", data: saiMes.map(v => Math.round(v)), borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,0.1)", borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: "#ef4444", fill: true, tension: 0.4 },
-        { label: "Resultado", data: resMes.map(v => Math.round(v)), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#3b82f6", fill: true, tension: 0.4 }
+        { label: "Entradas", data: entMes.map(v => Math.round(v)), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#22c55e", fill: true, tension: 0.3 },
+        { label: "Saídas", data: saiMes.map(v => Math.round(v)), borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#ef4444", fill: true, tension: 0.3 },
+        { label: "Resultado", data: resMes.map(v => Math.round(v)), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.06)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#3b82f6", fill: true, tension: 0.3 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: "#888", font: { size: 12 } } } },
+      plugins: { legend: { labels: { color: "#888", font: { size: 11 }, boxWidth: 12 } } },
       scales: {
-        x: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#888", font: { size: 11 } } },
-        y: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#888", font: { size: 11 }, callback: v => "R$" + (v/1000).toFixed(0) + "k" } }
-      }
+        x: { grid: { display: false }, ticks: { color: "#888", font: { size: 11 } } },
+        y: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#888", font: { size: 11 }, callback: v => "R$" + (v/1000).toFixed(1) + "k" }, beginAtZero: true }
+      },
+      interaction: { intersect: false, mode: "index" }
     }
   });
 
