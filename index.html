@@ -6,7 +6,6 @@
 <title>BPR Shop — Financeiro</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg: #0f0f11;
@@ -195,6 +194,45 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .empty svg { width: 32px; height: 32px; opacity: 0.3; display: block; margin: 0 auto 8px; }
 
 
+/* MOBILE */
+.mobile-menu-btn {
+  display: none; background: none; border: none; color: var(--text);
+  cursor: pointer; padding: 8px;
+}
+.mobile-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 99;
+}
+@media (max-width: 768px) {
+  .mobile-menu-btn { display: flex; align-items: center; }
+  .mobile-overlay.open { display: block; }
+  .sidebar {
+    transform: translateX(-100%); transition: transform 0.25s;
+    z-index: 100;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .main { margin-left: 0 !important; padding: 1rem; }
+  .page-title { font-size: 18px; }
+  .cards { grid-template-columns: 1fr 1fr !important; }
+  .two-col { grid-template-columns: 1fr !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .mobile-topbar {
+    display: flex !important; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem; padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+}
+@media (min-width: 769px) {
+  .mobile-topbar { display: none !important; }
+}
+
+/* PERFIL BADGE */
+.perfil-badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 500;
+}
+.perfil-admin { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.perfil-leitura { background: rgba(234,179,8,0.15); color: #eab308; }
+
 /* LOGIN */
 .login-screen {
   position: fixed; inset: 0; background: var(--bg);
@@ -360,14 +398,31 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       Dashboard Anual
     </button>
   </nav>
-  <div class="conn-badge">
-    <span class="status-dot dot-green" id="conn-dot"></span>
-    <span id="conn-txt">Conectado</span>
+  <div class="conn-badge" style="flex-direction:column;align-items:flex-start;gap:4px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="status-dot dot-green" id="conn-dot"></span>
+      <span id="conn-txt">Conectado</span>
+    </div>
+    <div id="user-info" style="font-size:11px;color:var(--text2)"></div>
+    <button onclick="doLogout()" style="font-size:11px;color:var(--red);background:none;border:none;cursor:pointer;padding:0;margin-top:2px">Sair</button>
   </div>
 </aside>
 
+<!-- MOBILE OVERLAY -->
+<div class="mobile-overlay" id="mobile-overlay" onclick="closeMobileMenu()"></div>
+
 <!-- MAIN -->
 <main class="main">
+
+<div class="mobile-topbar">
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="mobile-menu-btn" onclick="openMobileMenu()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span style="font-size:15px;font-weight:600">BPR Shop</span>
+  </div>
+  <div id="mobile-user" style="font-size:11px;color:var(--text2)"></div>
+</div>
 
 <!-- DASHBOARD -->
 <section id="tab-dashboard" class="section active">
@@ -393,10 +448,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       <div id="cat-list"><div class="loading">Carregando...</div></div>
     </div>
   </div>
-  <div class="panel">
-    <div class="panel-header"><span class="panel-title">Entradas vs Saídas — últimos 6 meses</span></div>
-    <canvas id="chartMain" height="200"></canvas>
-  </div>
+
 
   <div class="panel">
     <div class="panel-header"><span class="panel-title">📊 Comparativo mês a mês</span></div>
@@ -622,10 +674,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     <div class="card"><div class="card-label">Meses com lucro</div><div class="card-value" id="an-lucro">—</div><div class="card-sub">de 12 meses</div></div>
   </div>
 
-  <div class="panel" style="margin-bottom:1rem">
-    <div class="panel-header"><span class="panel-title">📊 Entradas vs Saídas — mês a mês</span></div>
-    <canvas id="chartAnual" height="220"></canvas>
-  </div>
+
 
   <div class="two-col" style="margin-bottom:1rem">
     <div class="panel">
@@ -671,7 +720,6 @@ const PLAT_CLASSES = { 'Mercado Livre': 'badge-ml', 'Shopee': 'badge-sh', 'TikTo
 let lancamentos = [];
 let repasses = [];
 let extratoFilter = 'TODOS';
-let chartInst = null;
 
 function getMes() { return parseInt(document.getElementById('selMes').value); }
 function getAno() { return parseInt(document.getElementById('selAno').value); }
@@ -790,16 +838,9 @@ function renderDash() {
     </div>`;
   }).join('') || '<div class="empty">Sem saídas no mês.</div>';
 
-  renderChart();
   renderComparativo();
 }
 
-async function renderChart() {
-  const mes = getMes(); const ano = getAno();
-  const labels = []; const entData = []; const saiData = [];
-  for (let i = 5; i >= 0; i--) {
-    let m = mes - i; let a = ano;
-    if (m < 0) { m += 12; a -= 1; }
     const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
     labels.push(meses[m]);
     const { data } = await sb.from('lancamentos').select('tipo,valor').eq('mes', m).eq('ano', a);
@@ -878,6 +919,7 @@ function renderRepasses() {
 }
 
 async function addLancamento() {
+  if (bloquearSeNaoAdmin()) return;
   const data = document.getElementById('f-data').value;
   const tipo = document.getElementById('f-tipo').value;
   const cat = document.getElementById('f-cat').value;
@@ -906,6 +948,7 @@ async function delLancamento(id) {
 }
 
 async function addRepasse() {
+  if (bloquearSeNaoAdmin()) return;
   const plat = document.getElementById('r-plat').value;
   const dvenda = document.getElementById('r-dvenda').value;
   const drep = document.getElementById('r-drep').value;
@@ -952,6 +995,7 @@ function setFiltConta(f, el) {
 }
 
 async function addConta() {
+  if (bloquearSeNaoAdmin()) return;
   const nome = document.getElementById("cp-nome").value.trim();
   const cat = document.getElementById("cp-cat").value;
   const valorRaw = document.getElementById("cp-valor").value.replace(",",".");
@@ -1130,6 +1174,45 @@ async function renderComparativo() {
   `;
 }
 
+// MOBILE MENU
+function openMobileMenu() {
+  document.getElementById("mobile-overlay").classList.add("open");
+  document.querySelector(".sidebar").classList.add("open");
+}
+function closeMobileMenu() {
+  document.getElementById("mobile-overlay").classList.remove("open");
+  document.querySelector(".sidebar").classList.remove("open");
+}
+
+// LOGOUT
+function doLogout() {
+  if (!confirm("Deseja sair do sistema?")) return;
+  sessionStorage.clear();
+  location.reload();
+}
+
+// USER INFO
+function renderUserInfo() {
+  const u = getUsuario();
+  if (!u) return;
+  const perfilCls = u.perfil === "admin" ? "perfil-admin" : "perfil-leitura";
+  const perfilTxt = u.perfil === "admin" ? "Admin" : "Leitura";
+  document.getElementById("user-info").innerHTML = `
+    <span>${u.nome}</span>
+    <span class="perfil-badge ${perfilCls}" style="margin-left:4px">${perfilTxt}</span>
+  `;
+  const mobileUser = document.getElementById("mobile-user");
+  if (mobileUser) mobileUser.innerHTML = `<span class="perfil-badge ${perfilCls}">${perfilTxt}</span>`;
+
+  // Restringir menu para leitura
+  if (u.perfil === "leitura") {
+    const btnLanc = document.querySelector("[onclick="showTab('lancamentos',this)"]");
+    if (btnLanc) btnLanc.style.opacity = "0.4";
+    const btnContas = document.querySelector("[onclick="showTab('contaspagar',this)"]");
+    if (btnContas) btnContas.style.opacity = "0.4";
+  }
+}
+
 // LOG DE ALTERACOES
 function registrarLog(acao, detalhes) {
   const usuario = sessionStorage.getItem("bpr_usuario") || "sistema";
@@ -1239,8 +1322,6 @@ function imprimirRelatorio() {
 }
 
 // DASHBOARD ANUAL
-let chartAnualInst = null;
-
 async function renderAnual() {
   const ano = parseInt(document.getElementById("selAnoAnual").value);
   document.getElementById("anual-sub").textContent = `Acumulado de ${ano}`;
@@ -1284,29 +1365,6 @@ async function renderAnual() {
   document.getElementById("an-melhor-val").textContent = resMes[melhorIdx] > 0 ? fmtBRL(resMes[melhorIdx]) : "sem dados";
   document.getElementById("an-lucro").textContent = `${mesesComLucro}/12`;
 
-  // Gráfico
-  const ctx = document.getElementById("chartAnual").getContext("2d");
-  if (chartAnualInst) chartAnualInst.destroy();
-  chartAnualInst = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: meses,
-      datasets: [
-        { label: "Entradas", data: entMes.map(v => Math.round(v)), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#22c55e", fill: true, tension: 0.3 },
-        { label: "Saídas", data: saiMes.map(v => Math.round(v)), borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#ef4444", fill: true, tension: 0.3 },
-        { label: "Resultado", data: resMes.map(v => Math.round(v)), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.06)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#3b82f6", fill: true, tension: 0.3 }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: "#888", font: { size: 11 }, boxWidth: 12 } } },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#888", font: { size: 11 } } },
-        y: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#888", font: { size: 11 }, callback: v => "R$" + (v/1000).toFixed(1) + "k" }, beginAtZero: true }
-      },
-      interaction: { intersect: false, mode: "index" }
-    }
-  });
 
   // Por plataforma
   const plats = ["Mercado Livre","Shopee","TikTok Shop"];
@@ -1350,19 +1408,34 @@ async function renderAnual() {
 
 
 const USUARIOS = {
-  "bprshop": "Bpr@032026",
-  "admin": "Bpr@032026"
+  "pedro":    { senha: "Bpr@032026", nome: "Pedro",   perfil: "admin" },
+  "bprshop":  { senha: "Bpr@032026", nome: "BPR Shop", perfil: "admin" },
+  "roberta":  { senha: "Bpr@032026", nome: "Roberta",  perfil: "admin" },
+  "equipe":   { senha: "Bpr@2026",   nome: "Equipe",   perfil: "leitura" }
 };
+
+function getUsuario() { return JSON.parse(sessionStorage.getItem("bpr_user") || "null"); }
+function isAdmin() { const u = getUsuario(); return u && u.perfil === "admin"; }
+
+function bloquearSeNaoAdmin() {
+  if (!isAdmin()) {
+    toast("Acesso restrito ao administrador.", "error");
+    return true;
+  }
+  return false;
+}
 
 function doLogin() {
   const user = document.getElementById("l-user").value.trim();
   const pass = document.getElementById("l-pass").value;
   const err = document.getElementById("l-error");
-  if (USUARIOS[user] && USUARIOS[user] === pass) {
+  const u = USUARIOS[user];
+  if (u && u.senha === pass) {
     sessionStorage.setItem("bpr_auth", "1");
     sessionStorage.setItem("bpr_usuario", user);
+    sessionStorage.setItem("bpr_user", JSON.stringify({ user, nome: u.nome, perfil: u.perfil }));
     document.getElementById("login-screen").style.display = "none";
-    registrarLog("Login", `Usuário ${user} entrou no sistema`);
+    registrarLog("Login", `${u.nome} (${u.perfil}) entrou no sistema`);
     initApp();
   } else {
     err.style.display = "block";
@@ -1386,6 +1459,7 @@ document.getElementById('r-dvenda').value = `${today.getFullYear()}-${pad(today.
 document.getElementById('r-drep').value = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
 document.getElementById('selMes').value = today.getMonth();
 
+renderUserInfo();
 Promise.all([render(), loadContas()]).then(() => {
   renderContas();
 }).catch(e => {
