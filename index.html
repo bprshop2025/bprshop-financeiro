@@ -841,33 +841,6 @@ function renderDash() {
   renderComparativo();
 }
 
-    const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    labels.push(meses[m]);
-    const { data } = await sb.from('lancamentos').select('tipo,valor').eq('mes', m).eq('ano', a);
-    const d = data || [];
-    entData.push(Math.round(d.filter(l=>l.tipo==='ENTRADA').reduce((s,l)=>s+parseFloat(l.valor),0)));
-    saiData.push(Math.round(d.filter(l=>l.tipo==='SAÍDA').reduce((s,l)=>s+parseFloat(l.valor),0)));
-  }
-  const ctx = document.getElementById('chartMain').getContext('2d');
-  if (chartInst) chartInst.destroy();
-  chartInst = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: [
-      { label: 'Entradas', data: entData, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#22c55e', fill: true, tension: 0.3 },
-      { label: 'Saídas', data: saiData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#ef4444', fill: true, tension: 0.3 }
-    ]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#888', font: { size: 11 }, boxWidth: 12 } } },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
-        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#888', font: { size: 11 }, callback: v => 'R$' + (v/1000).toFixed(1) + 'k' }, beginAtZero: true }
-      },
-      interaction: { intersect: false, mode: 'index' }
-    }
-  });
-}
-
 function renderExtrato() {
   let data = [...lancamentos];
   if (extratoFilter === 'ENTRADA' || extratoFilter === 'SAÍDA') data = data.filter(l => l.tipo === extratoFilter);
