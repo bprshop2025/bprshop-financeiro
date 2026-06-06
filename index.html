@@ -1179,10 +1179,13 @@ function renderUserInfo() {
 
   // Restringir menu para leitura
   if (u.perfil === "leitura") {
-    const btnLanc = document.querySelector("[onclick='showTab(\'lancamentos\',this)']");
-    if (btnLanc) btnLanc.style.opacity = "0.4";
-    const btnContas = document.querySelector("[onclick='showTab(\'contaspagar\',this)']");
-    if (btnContas) btnContas.style.opacity = "0.4";
+    document.querySelectorAll(".nav-item").forEach(btn => {
+      const oc = btn.getAttribute("onclick") || "";
+      if (oc.includes("lancamentos") || oc.includes("contaspagar")) {
+        btn.style.opacity = "0.4";
+        btn.style.pointerEvents = "none";
+      }
+    });
   }
 }
 
