@@ -194,6 +194,29 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .empty svg { width: 32px; height: 32px; opacity: 0.3; display: block; margin: 0 auto 8px; }
 
 
+/* FLUXO DE CAIXA */
+.timeline-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.timeline-item:last-child { border-bottom: none; }
+.timeline-date {
+  flex: 0 0 80px; font-size: 12px; color: var(--text2);
+  font-weight: 500; padding-top: 2px;
+}
+.timeline-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0; margin-top: 4px;
+}
+.timeline-info { flex: 1; }
+.timeline-desc { font-size: 13px; color: var(--text); }
+.timeline-cat { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.timeline-val { font-size: 14px; font-weight: 600; font-family: "DM Mono",monospace; text-align: right; }
+.timeline-saldo {
+  font-size: 11px; color: var(--text2); text-align: right; margin-top: 2px;
+}
+.saldo-critico { color: var(--red) !important; }
+
 /* MOBILE */
 .mobile-menu-btn {
   display: none; background: none; border: none; color: var(--text);
@@ -396,6 +419,10 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     <button class="nav-item" onclick="showTab('anual',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
       Dashboard Anual
+    </button>
+    <button class="nav-item" onclick="showTab('fluxo',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      Fluxo de Caixa
     </button>
   </nav>
   <div class="conn-badge" style="flex-direction:column;align-items:flex-start;gap:4px">
@@ -700,6 +727,70 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </section>
 
+<!-- FLUXO DE CAIXA -->
+<section id="tab-fluxo" class="section">
+  <div class="page-header">
+    <div><div class="page-title">Fluxo de Caixa</div><div class="page-sub">Saldo real e projeção dos próximos 30 dias</div></div>
+  </div>
+
+  <!-- Saldo atual -->
+  <div class="panel" style="margin-bottom:1rem">
+    <div class="panel-header"><span class="panel-title">💰 Saldo atual em conta</span></div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="fg" style="flex:0 0 220px">
+        <label class="form-label">Saldo disponível hoje (R$)</label>
+        <input type="text" id="fluxo-saldo" placeholder="Ex: 5000,00" style="font-size:18px;font-weight:500">
+      </div>
+      <button class="btn btn-primary" style="width:auto;margin-top:18px" onclick="salvarSaldo()">Atualizar saldo</button>
+      <div id="fluxo-saldo-info" style="font-size:12px;color:var(--text2);margin-top:18px"></div>
+    </div>
+  </div>
+
+  <!-- Cards resumo -->
+  <div class="cards" style="margin-bottom:1rem">
+    <div class="card green">
+      <div class="card-label">Saldo atual</div>
+      <div class="card-value" id="fc-saldo-atual">R$ 0,00</div>
+      <div class="card-sub">disponível em conta</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Entradas previstas (30d)</div>
+      <div class="card-value" id="fc-entradas-prev" style="color:var(--green)">R$ 0,00</div>
+      <div class="card-sub">repasses a receber</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Saídas previstas (30d)</div>
+      <div class="card-value" id="fc-saidas-prev" style="color:var(--red)">R$ 0,00</div>
+      <div class="card-sub">contas a vencer</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Saldo projetado (30d)</div>
+      <div class="card-value" id="fc-saldo-proj">R$ 0,00</div>
+      <div class="card-sub" id="fc-proj-sub">estimativa</div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-bottom:1rem">
+    <!-- Entradas previstas -->
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">📥 Repasses a receber (próx. 30 dias)</span></div>
+      <div id="fc-lista-entradas"><div class="empty">Nenhum repasse pendente.</div></div>
+    </div>
+
+    <!-- Saídas previstas -->
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">📤 Contas a vencer (próx. 30 dias)</span></div>
+      <div id="fc-lista-saidas"><div class="empty">Nenhuma conta a vencer.</div></div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">📅 Linha do tempo — próximos 30 dias</span></div>
+    <div id="fc-timeline"><div class="loading">Carregando...</div></div>
+  </div>
+</section>
+
 </main>
 </div>
 
@@ -751,6 +842,7 @@ function showTab(id, btn) {
   if (id === 'relatorio') renderRelatorio();
   if (id === 'contaspagar') { loadContas().then(renderContas); }
   if (id === 'anual') renderAnual();
+  if (id === 'fluxo') renderFluxo();
 }
 
 function updateCats() {
@@ -1187,6 +1279,126 @@ function renderUserInfo() {
       }
     });
   }
+}
+
+// FLUXO DE CAIXA
+function salvarSaldo() {
+  if (bloquearSeNaoAdmin()) return;
+  const val = document.getElementById("fluxo-saldo").value.replace(",",".");
+  const num = parseFloat(val);
+  if (isNaN(num)) { toast("Digite um valor válido.", "error"); return; }
+  localStorage.setItem("bpr_saldo", JSON.stringify({ valor: num, dt: new Date().toLocaleString("pt-BR") }));
+  toast("Saldo atualizado!");
+  registrarLog("Saldo atualizado", fmtBRL(num));
+  renderFluxo();
+}
+
+async function renderFluxo() {
+  // Carregar saldo salvo
+  const saldoData = JSON.parse(localStorage.getItem("bpr_saldo") || "null");
+  const saldoAtual = saldoData ? saldoData.valor : 0;
+
+  if (saldoData) {
+    document.getElementById("fluxo-saldo").value = saldoData.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+    document.getElementById("fluxo-saldo-info").textContent = `Atualizado em: ${saldoData.dt}`;
+  }
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const em30 = new Date(hoje); em30.setDate(hoje.getDate() + 30);
+
+  // Buscar repasses pendentes
+  const { data: reps } = await sb.from("repasses").select("*").eq("recebido", false);
+  const repasses30 = (reps || []).filter(r => {
+    const d = new Date(r.drep + "T12:00:00");
+    return d >= hoje && d <= em30;
+  });
+
+  // Buscar contas a pagar pendentes
+  const { data: contas } = await sb.from("contas_pagar").select("*").eq("paga", false);
+  const contas30 = (contas || []).filter(c => {
+    const d = new Date(c.vencimento + "T12:00:00");
+    return d >= hoje && d <= em30;
+  });
+
+  const totalEntradas = repasses30.reduce((s,r) => s + parseFloat(r.valor), 0);
+  const totalSaidas = contas30.reduce((s,c) => s + parseFloat(c.valor), 0);
+  const saldoProj = saldoAtual + totalEntradas - totalSaidas;
+
+  // Cards
+  document.getElementById("fc-saldo-atual").textContent = fmtBRL(saldoAtual);
+  document.getElementById("fc-saldo-atual").style.color = saldoAtual >= 0 ? "var(--green)" : "var(--red)";
+  document.getElementById("fc-entradas-prev").textContent = fmtBRL(totalEntradas);
+  document.getElementById("fc-saidas-prev").textContent = fmtBRL(totalSaidas);
+  document.getElementById("fc-saldo-proj").textContent = fmtBRL(saldoProj);
+  document.getElementById("fc-saldo-proj").style.color = saldoProj >= 0 ? "var(--green)" : "var(--red)";
+  document.getElementById("fc-proj-sub").textContent = saldoProj >= 0 ? "saldo positivo" : "⚠ saldo negativo!";
+
+  // Lista entradas previstas
+  const listaEnt = document.getElementById("fc-lista-entradas");
+  if (!repasses30.length) {
+    listaEnt.innerHTML = "<div class='empty'>Nenhum repasse pendente nos próximos 30 dias.</div>";
+  } else {
+    listaEnt.innerHTML = repasses30.sort((a,b) => new Date(a.drep) - new Date(b.drep)).map(r => `
+      <div class="plat-row">
+        <div>
+          <div style="font-size:13px;font-weight:500">${r.plat}</div>
+          <div style="font-size:11px;color:var(--text2)">Previsão: ${fmtDate(r.drep)}</div>
+        </div>
+        <div style="color:var(--green);font-weight:600;font-family:'DM Mono',monospace">${fmtBRL(parseFloat(r.valor))}</div>
+      </div>`).join("");
+  }
+
+  // Lista saídas previstas
+  const listaSai = document.getElementById("fc-lista-saidas");
+  if (!contas30.length) {
+    listaSai.innerHTML = "<div class='empty'>Nenhuma conta a vencer nos próximos 30 dias.</div>";
+  } else {
+    listaSai.innerHTML = contas30.sort((a,b) => new Date(a.vencimento) - new Date(b.vencimento)).map(c => {
+      const dvenc = new Date(c.vencimento + "T12:00:00");
+      const diff = Math.ceil((dvenc - hoje) / (1000*60*60*24));
+      const urgente = diff <= 3;
+      return `
+      <div class="plat-row">
+        <div>
+          <div style="font-size:13px;font-weight:500;color:${urgente?"var(--red)":"var(--text)"}">${c.nome}</div>
+          <div style="font-size:11px;color:var(--text2)">${c.cat} • vence em ${diff === 0 ? "hoje" : diff + "d"}</div>
+        </div>
+        <div style="color:var(--red);font-weight:600;font-family:'DM Mono',monospace">${fmtBRL(parseFloat(c.valor))}</div>
+      </div>`;
+    }).join("");
+  }
+
+  // Timeline — juntar tudo e ordenar por data
+  const eventos = [];
+  repasses30.forEach(r => eventos.push({ dt: r.drep, tipo: "entrada", desc: `Repasse ${r.plat}`, val: parseFloat(r.valor) }));
+  contas30.forEach(c => eventos.push({ dt: c.vencimento, tipo: "saida", desc: c.nome, cat: c.cat, val: parseFloat(c.valor) }));
+  eventos.sort((a,b) => new Date(a.dt) - new Date(b.dt));
+
+  if (!eventos.length) {
+    document.getElementById("fc-timeline").innerHTML = "<div class='empty'>Nenhum evento nos próximos 30 dias.</div>";
+    return;
+  }
+
+  let saldoCorrido = saldoAtual;
+  document.getElementById("fc-timeline").innerHTML = eventos.map(ev => {
+    if (ev.tipo === "entrada") saldoCorrido += ev.val;
+    else saldoCorrido -= ev.val;
+    const cor = ev.tipo === "entrada" ? "var(--green)" : "var(--red)";
+    const sinal = ev.tipo === "entrada" ? "+" : "-";
+    const critico = saldoCorrido < 0;
+    return `<div class="timeline-item">
+      <div class="timeline-date">${fmtDate(ev.dt)}</div>
+      <div class="timeline-dot" style="background:${cor}"></div>
+      <div class="timeline-info">
+        <div class="timeline-desc">${ev.desc}</div>
+        <div class="timeline-cat">${ev.cat || (ev.tipo === "entrada" ? "Repasse" : "")}</div>
+      </div>
+      <div>
+        <div class="timeline-val" style="color:${cor}">${sinal} ${fmtBRL(ev.val)}</div>
+        <div class="timeline-saldo ${critico?"saldo-critico":""}">Saldo: ${fmtBRL(saldoCorrido)}</div>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 // LOG DE ALTERACOES
