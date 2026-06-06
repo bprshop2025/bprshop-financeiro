@@ -810,10 +810,10 @@ async function renderChart() {
   const ctx = document.getElementById('chartMain').getContext('2d');
   if (chartInst) chartInst.destroy();
   chartInst = new Chart(ctx, {
-    type: 'bar',
+    type: 'line',
     data: { labels, datasets: [
-      { label: 'Entradas', data: entData, backgroundColor: 'rgba(34,197,94,0.7)', borderRadius: 4 },
-      { label: 'Saídas', data: saiData, backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 4 }
+      { label: 'Entradas', data: entData, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: '#22c55e', fill: true, tension: 0.4 },
+      { label: 'Saídas', data: saiData, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: '#ef4444', fill: true, tension: 0.4 }
     ]},
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -1287,13 +1287,13 @@ async function renderAnual() {
   const ctx = document.getElementById("chartAnual").getContext("2d");
   if (chartAnualInst) chartAnualInst.destroy();
   chartAnualInst = new Chart(ctx, {
-    type: "bar",
+    type: "line",
     data: {
       labels: meses,
       datasets: [
-        { label: "Entradas", data: entMes.map(v => Math.round(v)), backgroundColor: "rgba(34,197,94,0.7)", borderRadius: 4 },
-        { label: "Saídas", data: saiMes.map(v => Math.round(v)), backgroundColor: "rgba(239,68,68,0.7)", borderRadius: 4 },
-        { label: "Resultado", data: resMes.map(v => Math.round(v)), type: "line", borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.1)", borderWidth: 2, pointRadius: 4, fill: true, tension: 0.3 }
+        { label: "Entradas", data: entMes.map(v => Math.round(v)), borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.1)", borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: "#22c55e", fill: true, tension: 0.4 },
+        { label: "Saídas", data: saiMes.map(v => Math.round(v)), borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,0.1)", borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: "#ef4444", fill: true, tension: 0.4 },
+        { label: "Resultado", data: resMes.map(v => Math.round(v)), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.08)", borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#3b82f6", fill: true, tension: 0.4 }
       ]
     },
     options: {
