@@ -355,6 +355,10 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
       Contas a Pagar
     </button>
+    <button class="nav-item" onclick="showTab('anual',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      Dashboard Anual
+    </button>
   </nav>
   <div class="conn-badge">
     <span class="status-dot dot-green" id="conn-dot"></span>
@@ -591,6 +595,62 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </section>
 
+<!-- DASHBOARD ANUAL -->
+<section id="tab-anual" class="section">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Dashboard Anual</div>
+      <div class="page-sub" id="anual-sub">Acumulado do ano</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <label style="font-size:12px;color:var(--text2)">Ano:</label>
+      <select id="selAnoAnual" onchange="renderAnual()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:13px;font-family:inherit">
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+        <option value="2026" selected>2026</option>
+        <option value="2027">2027</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="cards" id="anual-cards" style="margin-bottom:1rem">
+    <div class="card green"><div class="card-label">Total entradas</div><div class="card-value" id="an-ent">—</div><div class="card-sub">no ano</div></div>
+    <div class="card red"><div class="card-label">Total saídas</div><div class="card-value" id="an-sai">—</div><div class="card-sub">no ano</div></div>
+    <div class="card"><div class="card-label">Resultado anual</div><div class="card-value" id="an-res">—</div><div class="card-sub" id="an-res-sub">—</div></div>
+    <div class="card"><div class="card-label">Margem média</div><div class="card-value" id="an-margem">—</div><div class="card-sub">sobre entradas</div></div>
+    <div class="card"><div class="card-label">Melhor mês</div><div class="card-value" id="an-melhor" style="font-size:16px">—</div><div class="card-sub" id="an-melhor-val">—</div></div>
+    <div class="card"><div class="card-label">Meses com lucro</div><div class="card-value" id="an-lucro">—</div><div class="card-sub">de 12 meses</div></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:1rem">
+    <div class="panel-header"><span class="panel-title">📊 Entradas vs Saídas — mês a mês</span></div>
+    <canvas id="chartAnual" height="220"></canvas>
+  </div>
+
+  <div class="two-col" style="margin-bottom:1rem">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🏪 Por plataforma no ano</span></div>
+      <div id="anual-plat"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">📋 Resumo mensal</span></div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:6px 8px;color:var(--text2);border-bottom:1px solid var(--border);font-size:11px">Mês</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--text2);border-bottom:1px solid var(--border);font-size:11px">Entradas</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--text2);border-bottom:1px solid var(--border);font-size:11px">Saídas</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--text2);border-bottom:1px solid var(--border);font-size:11px">Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="anual-tabela"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
 </main>
 </div>
 
@@ -642,6 +702,7 @@ function showTab(id, btn) {
   if (id === 'log') renderLog();
   if (id === 'relatorio') renderRelatorio();
   if (id === 'contaspagar') { loadContas().then(renderContas); }
+  if (id === 'anual') renderAnual();
 }
 
 function updateCats() {
@@ -1176,7 +1237,115 @@ function imprimirRelatorio() {
   window.print();
 }
 
+// DASHBOARD ANUAL
+let chartAnualInst = null;
+
+async function renderAnual() {
+  const ano = parseInt(document.getElementById("selAnoAnual").value);
+  document.getElementById("anual-sub").textContent = `Acumulado de ${ano}`;
+
+  const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const mesesFull = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  // Buscar todos os dados do ano
+  const { data: dadosAno } = await sb.from("lancamentos").select("*").eq("ano", ano);
+  const todos = dadosAno || [];
+
+  // Calcular por mês
+  const entMes = Array(12).fill(0);
+  const saiMes = Array(12).fill(0);
+  todos.forEach(l => {
+    const m = parseInt(l.mes);
+    if (l.tipo === "ENTRADA") entMes[m] += parseFloat(l.valor);
+    else saiMes[m] += parseFloat(l.valor);
+  });
+
+  const resMes = entMes.map((e, i) => e - saiMes[i]);
+  const totalEnt = entMes.reduce((s,v) => s+v, 0);
+  const totalSai = saiMes.reduce((s,v) => s+v, 0);
+  const totalRes = totalEnt - totalSai;
+  const margem = totalEnt > 0 ? (totalRes/totalEnt*100).toFixed(1) : 0;
+
+  // Melhor mês
+  const melhorIdx = resMes.indexOf(Math.max(...resMes));
+  const mesesComLucro = resMes.filter(r => r > 0).length;
+
+  // Cards
+  document.getElementById("an-ent").textContent = fmtBRL(totalEnt);
+  document.getElementById("an-ent").style.color = "var(--green)";
+  document.getElementById("an-sai").textContent = fmtBRL(totalSai);
+  document.getElementById("an-res").textContent = fmtBRL(totalRes);
+  document.getElementById("an-res").style.color = totalRes >= 0 ? "var(--green)" : "var(--red)";
+  document.getElementById("an-res-sub").textContent = totalRes >= 0 ? "lucro no ano" : "prejuízo no ano";
+  document.getElementById("an-margem").textContent = margem + "%";
+  document.getElementById("an-margem").style.color = margem >= 0 ? "var(--green)" : "var(--red)";
+  document.getElementById("an-melhor").textContent = mesesFull[melhorIdx] || "—";
+  document.getElementById("an-melhor-val").textContent = resMes[melhorIdx] > 0 ? fmtBRL(resMes[melhorIdx]) : "sem dados";
+  document.getElementById("an-lucro").textContent = `${mesesComLucro}/12`;
+
+  // Gráfico
+  const ctx = document.getElementById("chartAnual").getContext("2d");
+  if (chartAnualInst) chartAnualInst.destroy();
+  chartAnualInst = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: meses,
+      datasets: [
+        { label: "Entradas", data: entMes.map(v => Math.round(v)), backgroundColor: "rgba(34,197,94,0.7)", borderRadius: 4 },
+        { label: "Saídas", data: saiMes.map(v => Math.round(v)), backgroundColor: "rgba(239,68,68,0.7)", borderRadius: 4 },
+        { label: "Resultado", data: resMes.map(v => Math.round(v)), type: "line", borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.1)", borderWidth: 2, pointRadius: 4, fill: true, tension: 0.3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#888", font: { size: 12 } } } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#888", font: { size: 11 } } },
+        y: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#888", font: { size: 11 }, callback: v => "R$" + (v/1000).toFixed(0) + "k" } }
+      }
+    }
+  });
+
+  // Por plataforma
+  const plats = ["Mercado Livre","Shopee","TikTok Shop"];
+  const platColors = ["#f59e0b","#f97316","#a855f7"];
+  const platEnt = plats.map(p => todos.filter(l=>l.plat===p&&l.tipo==="ENTRADA").reduce((s,l)=>s+parseFloat(l.valor),0));
+  const platSai = plats.map(p => todos.filter(l=>l.plat===p&&l.tipo==="SAÍDA").reduce((s,l)=>s+parseFloat(l.valor),0));
+  const maxEnt = Math.max(...platEnt, 1);
+
+  document.getElementById("anual-plat").innerHTML = plats.map((p,i) => {
+    const liq = platEnt[i] - platSai[i];
+    const pct = Math.round(platEnt[i]/maxEnt*100);
+    return `<div class="plat-row">
+      <div class="plat-info">
+        <div class="plat-dot" style="background:${platColors[i]}"></div>
+        <div>
+          <div class="plat-name">${p}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${platColors[i]}"></div></div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="plat-val" style="color:${liq>=0?"var(--green)":"var(--red)"}">${fmtBRL(liq)}</div>
+        <div class="plat-pct">Bruto: ${fmtBRL(platEnt[i])}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  // Tabela mensal
+  document.getElementById("anual-tabela").innerHTML = meses.map((m,i) => {
+    const e = entMes[i]; const s = saiMes[i]; const r = e - s;
+    const semDados = e === 0 && s === 0;
+    return `<tr style="${semDados?"opacity:0.3":""}">
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);font-weight:500">${mesesFull[i]}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;color:var(--green);font-family:'DM Mono',monospace">${semDados?"—":fmtBRL(e)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;color:var(--red);font-family:'DM Mono',monospace">${semDados?"—":fmtBRL(s)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;color:${r>=0?"var(--green)":"var(--red)"};font-weight:500;font-family:'DM Mono',monospace">${semDados?"—":fmtBRL(r)}</td>
+    </tr>`;
+  }).join("");
+}
+
 // LOGIN
+
 
 const USUARIOS = {
   "bprshop": "Bpr@032026",
