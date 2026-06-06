@@ -1179,9 +1179,9 @@ function renderUserInfo() {
 
   // Restringir menu para leitura
   if (u.perfil === "leitura") {
-    const btnLanc = document.querySelector("[onclick="showTab('lancamentos',this)"]");
+    const btnLanc = document.querySelector("[onclick='showTab(\'lancamentos\',this)']");
     if (btnLanc) btnLanc.style.opacity = "0.4";
-    const btnContas = document.querySelector("[onclick="showTab('contaspagar',this)"]");
+    const btnContas = document.querySelector("[onclick='showTab(\'contaspagar\',this)']");
     if (btnContas) btnContas.style.opacity = "0.4";
   }
 }
