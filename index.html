@@ -2105,7 +2105,7 @@ if (sessionStorage.getItem("bpr_auth") === "1") {
   initApp();
 }
 </script>
-  <!-- ===== BOTÃO SINCRONIZAR SHOPEE (cole isto logo antes de </body>) ===== -->
+ <!-- ===== BOTÃO SINCRONIZAR SHOPEE (cole isto logo antes de </body>) ===== -->
 <script>
 window.addEventListener('load', function () {
   if (document.getElementById('btn-sync-shopee')) return;
@@ -2116,10 +2116,11 @@ window.addEventListener('load', function () {
   btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;background:#f97316;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:inherit;font-size:14px;display:none';
   document.body.appendChild(btn);
 
-  // Mostra o botão SÓ quando estiver logado (quando o seletor de mês está visível na tela)
+  // Mostra o botão SÓ quando estiver logado (usa o mesmo marcador do sistema)
   function estaLogado() {
-    const sel = document.getElementById('selMes');
-    return sel && sel.offsetParent !== null;
+    if (sessionStorage.getItem('bpr_auth') !== '1') return false;
+    const ls = document.getElementById('login-screen');
+    return !ls || ls.offsetParent === null; // login-screen escondido ou ausente
   }
   setInterval(function () {
     if (!btn.disabled) btn.style.display = estaLogado() ? 'block' : 'none';
