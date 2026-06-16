@@ -2105,5 +2105,54 @@ if (sessionStorage.getItem("bpr_auth") === "1") {
   initApp();
 }
 </script>
-</body>
+<!-- ===== BOTÃO SINCRONIZAR SHOPEE (cole isto logo antes de </body>) ===== -->
+<script>
+window.addEventListener('load', function () {
+  if (document.getElementById('btn-sync-shopee')) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'btn-sync-shopee';
+  btn.textContent = '🛒 Sincronizar Shopee';
+  btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;background:#f97316;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:inherit;font-size:14px';
+  document.body.appendChild(btn);
+
+  const API = 'https://fsddalxqcjjvssfzxioj.supabase.co/functions/v1/shopee-api';
+
+  btn.addEventListener('click', async function () {
+    const mes = (typeof getMes === 'function') ? getMes() : new Date().getMonth();
+    const ano = (typeof getAno === 'function') ? getAno() : new Date().getFullYear();
+    btn.disabled = true;
+    let addV = 0, addT = 0, rod = 0, ped = 0;
+    try {
+      while (true) {
+        rod++;
+        btn.textContent = '⏳ Sincronizando... (' + rod + ')';
+        const resp = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sync_finance', mes: mes, ano: ano, limite: 40 })
+        });
+        const d = await resp.json();
+        if (!d.ok) { alert('Erro na sincronização: ' + (d.error || JSON.stringify(d))); break; }
+        addV += d.vendas_inseridas || 0;
+        addT += d.taxas_inseridas || 0;
+        ped = d.pedidos_encontrados || ped;
+        if (d.mais === false) {
+          alert('✅ Shopee sincronizada!\n\nLançamentos novos de venda: ' + addV +
+                '\nLançamentos novos de taxa: ' + addT +
+                '\nPedidos do mês: ' + ped);
+          if (typeof render === 'function') { try { await render(); } catch (e) {} }
+          break;
+        }
+      }
+    } catch (e) {
+      alert('Falha: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🛒 Sincronizar Shopee';
+    }
+  });
+});
+</script>
+<!-- ===== FIM DO BOTÃO SINCRONIZAR SHOPEE ===== --></body>
 </html>
