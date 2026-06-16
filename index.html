@@ -2108,60 +2108,119 @@ if (sessionStorage.getItem("bpr_auth") === "1") {
  <!-- ===== BOTÃO SINCRONIZAR SHOPEE (cole isto logo antes de </body>) ===== -->
 <script>
 window.addEventListener('load', function () {
-  if (document.getElementById('btn-sync-shopee')) return;
+  if (document.getElementById('bpr-shopee-tools')) return;
 
-  const btn = document.createElement('button');
-  btn.id = 'btn-sync-shopee';
-  btn.textContent = '🛒 Sincronizar Shopee';
-  btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;background:#f97316;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:inherit;font-size:14px;display:none';
-  document.body.appendChild(btn);
+  var SB_URL = 'https://fsddalxqcjjvssfzxioj.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzZGRhbHhxY2pqdnNzZnp4aW9qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMjQ2MDIsImV4cCI6MjA5NTYwMDYwMn0.06fvjh4iygwcLKrS7G0hHfFQuJHXshRw6YcS1WNF5U4';
+  var API = SB_URL + '/functions/v1/shopee-api';
+  function db() { return (typeof sb !== 'undefined' && sb) ? sb : window.supabase.createClient(SB_URL, SB_KEY); }
+  function fmt(n) { return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ','); }
+  function getMA() {
+    return {
+      mes: (typeof getMes === 'function') ? getMes() : new Date().getMonth(),
+      ano: (typeof getAno === 'function') ? getAno() : new Date().getFullYear()
+    };
+  }
 
-  // Mostra o botão SÓ quando estiver logado (usa o mesmo marcador do sistema)
+  // ---- botões ----
+  var wrap = document.createElement('div');
+  wrap.id = 'bpr-shopee-tools';
+  wrap.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:none;flex-direction:column;gap:8px;align-items:flex-end;font-family:inherit';
+  document.body.appendChild(wrap);
+
+  var btnSync = document.createElement('button');
+  btnSync.textContent = '🛒 Sincronizar Shopee';
+  btnSync.style.cssText = 'background:#f97316;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
+  wrap.appendChild(btnSync);
+
+  var btnExt = document.createElement('button');
+  btnExt.textContent = '📊 Extrato Shopee';
+  btnExt.style.cssText = 'background:#1f2937;color:#fff;border:1px solid #374151;padding:10px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
+  wrap.appendChild(btnExt);
+
   function estaLogado() {
     if (sessionStorage.getItem('bpr_auth') !== '1') return false;
-    const ls = document.getElementById('login-screen');
-    return !ls || ls.offsetParent === null; // login-screen escondido ou ausente
+    var ls = document.getElementById('login-screen');
+    return !ls || ls.offsetParent === null;
   }
   setInterval(function () {
-    if (!btn.disabled) btn.style.display = estaLogado() ? 'block' : 'none';
+    if (!btnSync.disabled) wrap.style.display = estaLogado() ? 'flex' : 'none';
   }, 700);
 
-  const API = 'https://fsddalxqcjjvssfzxioj.supabase.co/functions/v1/shopee-api';
-
-  btn.addEventListener('click', async function () {
-    const mes = (typeof getMes === 'function') ? getMes() : new Date().getMonth();
-    const ano = (typeof getAno === 'function') ? getAno() : new Date().getFullYear();
-    btn.disabled = true;
-    let addV = 0, addT = 0, rod = 0, ped = 0;
+  // ---- SINCRONIZAR ----
+  btnSync.addEventListener('click', async function () {
+    var ma = getMA();
+    btnSync.disabled = true;
+    var add = 0, rod = 0, ped = 0, tv = 0, tt = 0, tl = 0;
     try {
       while (true) {
         rod++;
-        btn.textContent = '⏳ Sincronizando... (' + rod + ')';
-        const resp = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'sync_finance', mes: mes, ano: ano, limite: 40 })
-        });
-        const d = await resp.json();
-        if (!d.ok) { alert('Erro na sincronização: ' + (d.error || JSON.stringify(d))); break; }
-        addV += d.vendas_inseridas || 0;
-        addT += d.taxas_inseridas || 0;
-        ped = d.pedidos_encontrados || ped;
+        btnSync.textContent = '⏳ Sincronizando... (' + rod + ')';
+        var resp = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync_finance', mes: ma.mes, ano: ma.ano, limite: 40 }) });
+        var d = await resp.json();
+        if (!d.ok) { alert('Erro: ' + (d.error || JSON.stringify(d))); break; }
+        add += d.pedidos_inseridos || 0; ped = d.pedidos_encontrados || ped;
+        tv += d.total_vendas || 0; tt += d.total_taxas || 0; tl += d.total_liquido || 0;
         if (d.mais === false) {
-          alert('✅ Shopee sincronizada!\n\nLançamentos novos de venda: ' + addV +
-                '\nLançamentos novos de taxa: ' + addT +
-                '\nPedidos do mês: ' + ped);
-          if (typeof render === 'function') { try { await render(); } catch (e) {} }
+          alert('✅ Shopee sincronizada!\n\nPedidos novos: ' + add + '\nPedidos no mês: ' + ped + '\n\nVendas: ' + fmt(tv) + '\nTaxas: ' + fmt(tt) + '\nLíquido: ' + fmt(tl));
           break;
         }
       }
+    } catch (e) { alert('Falha: ' + e.message); }
+    finally { btnSync.disabled = false; btnSync.textContent = '🛒 Sincronizar Shopee'; }
+  });
+
+  // ---- EXTRATO (painel) ----
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100000;display:none;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div id="bpr-ext-box" style="background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:14px;max-width:920px;width:100%;max-height:86vh;overflow:auto;padding:20px;font-family:inherit"></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function (e) { if (e.target === ov) ov.style.display = 'none'; });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ov.style.display = 'none'; });
+  var box = ov.querySelector('#bpr-ext-box');
+  var MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  btnExt.addEventListener('click', async function () {
+    var ma = getMA();
+    ov.style.display = 'flex';
+    box.innerHTML = '<div style="text-align:center;padding:40px">Carregando extrato...</div>';
+    try {
+      var res = await db().from('extrato_marketplace').select('*').eq('marketplace', 'Shopee').eq('mes', ma.mes).eq('ano', ma.ano).order('data', { ascending: true });
+      if (res.error) throw res.error;
+      var rows = res.data || [];
+      var tv = 0, tt = 0, tl = 0;
+      rows.forEach(function (r) { tv += Number(r.venda) || 0; tt += Number(r.taxa) || 0; tl += Number(r.liquido) || 0; });
+
+      var h = '';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+      h += '<h2 style="margin:0;font-size:20px">📊 Extrato Shopee — ' + (MESES[ma.mes] || ma.mes) + '/' + ma.ano + '</h2>';
+      h += '<button id="bpr-ext-close" style="background:#374151;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Fechar ✕</button></div>';
+      h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">';
+      h += card('Pedidos', rows.length, '#e5e7eb');
+      h += card('Vendas (bruto)', fmt(tv), '#34d399');
+      h += card('Taxas', fmt(tt), '#f87171');
+      h += card('Líquido', fmt(tl), '#60a5fa');
+      h += '</div>';
+      if (rows.length === 0) {
+        h += '<div style="text-align:center;padding:30px;color:#9ca3af">Nenhum pedido nesse mês. Clique em "Sincronizar Shopee" primeiro.</div>';
+      } else {
+        h += '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:#9ca3af;border-bottom:1px solid #374151"><th style="padding:8px">Data</th><th style="padding:8px">Pedido</th><th style="padding:8px;text-align:right">Venda</th><th style="padding:8px;text-align:right">Taxa</th><th style="padding:8px;text-align:right">Líquido</th></tr></thead><tbody>';
+        rows.forEach(function (r) {
+          h += '<tr style="border-bottom:1px solid #1f2937"><td style="padding:8px">' + (r.data || '') + '</td><td style="padding:8px">#' + (r.order_sn || '') + '</td><td style="padding:8px;text-align:right;color:#34d399">' + fmt(r.venda) + '</td><td style="padding:8px;text-align:right;color:#f87171">' + fmt(r.taxa) + '</td><td style="padding:8px;text-align:right;color:#60a5fa">' + fmt(r.liquido) + '</td></tr>';
+        });
+        h += '</tbody></table>';
+      }
+      box.innerHTML = h;
+      var c = box.querySelector('#bpr-ext-close');
+      if (c) c.addEventListener('click', function () { ov.style.display = 'none'; });
     } catch (e) {
-      alert('Falha: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '🛒 Sincronizar Shopee';
+      box.innerHTML = '<div style="padding:30px;color:#f87171">Erro ao carregar: ' + e.message + '</div><div style="text-align:center;color:#9ca3af">(clique fora pra fechar)</div>';
     }
   });
+
+  function card(titulo, valor, cor) {
+    return '<div style="flex:1;min-width:130px;background:#1f2937;border-radius:10px;padding:12px"><div style="font-size:12px;color:#9ca3af">' + titulo + '</div><div style="font-size:20px;font-weight:700;color:' + cor + '">' + valor + '</div></div>';
+  }
 });
 </script>
 <!-- ===== FIM DO BOTÃO SINCRONIZAR SHOPEE ===== -->
