@@ -2321,4 +2321,180 @@ window.addEventListener('load', function () {
 });
 </script>
 <!-- ===== FIM DO BOTÃO SINCRONIZAR SHOPEE ===== -->
+  <!-- ===== BOTÃO SINCRONIZAR MERCADO LIVRE (cole isto logo antes de </body>) ===== -->
+<script>
+window.addEventListener('load', function () {
+  if (document.getElementById('bpr-ml-tools')) return;
+
+  var SB_URL = 'https://fsddalxqcjjvssfzxioj.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzZGRhbHhxY2pqdnNzZnp4aW9qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMjQ2MDIsImV4cCI6MjA5NTYwMDYwMn0.06fvjh4iygwcLKrS7G0hHfFQuJHXshRw6YcS1WNF5U4';
+  var API = SB_URL + '/functions/v1/mercadolivre-api';
+  function db() { return (typeof sb !== 'undefined' && sb) ? sb : window.supabase.createClient(SB_URL, SB_KEY); }
+  function fmt(n) { return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ','); }
+  function dia(s) { if (!s) return ''; var p = String(s).substring(0, 10).split('-'); return p[2] + '/' + p[1]; }
+  function getMA() { return { mes: (typeof getMes === 'function') ? getMes() : new Date().getMonth(), ano: (typeof getAno === 'function') ? getAno() : new Date().getFullYear() }; }
+  var MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  var wrap = document.createElement('div');
+  wrap.id = 'bpr-ml-tools';
+  wrap.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:99999;display:none;flex-direction:column;gap:8px;align-items:flex-start;font-family:inherit';
+  document.body.appendChild(wrap);
+
+  var btnSync = document.createElement('button');
+  btnSync.textContent = '🟡 Sincronizar Mercado Livre';
+  btnSync.style.cssText = 'background:#ffe600;color:#2d3277;border:none;padding:12px 18px;border-radius:10px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
+  wrap.appendChild(btnSync);
+
+  var btnExt = document.createElement('button');
+  btnExt.textContent = '📊 Extrato Mercado Livre';
+  btnExt.style.cssText = 'background:#1f2937;color:#fff;border:1px solid #374151;padding:10px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
+  wrap.appendChild(btnExt);
+
+  function estaLogado() { if (sessionStorage.getItem('bpr_auth') !== '1') return false; var ls = document.getElementById('login-screen'); return !ls || ls.offsetParent === null; }
+  setInterval(function () { if (!btnSync.disabled) wrap.style.display = estaLogado() ? 'flex' : 'none'; }, 700);
+
+  // ---- SINCRONIZAR (mês inteiro numa chamada só) ----
+  btnSync.addEventListener('click', async function () {
+    var ma = getMA();
+    btnSync.disabled = true;
+    btnSync.textContent = '⏳ Sincronizando ' + (MESES[ma.mes] || '') + '...';
+    try {
+      var resp = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync_finance', mes: ma.mes, ano: ma.ano }) });
+      var d = await resp.json();
+      if (d.error || d.erro) { alert('Erro: ' + (d.error || d.erro)); }
+      else {
+        alert('✅ Mercado Livre sincronizado! (' + (MESES[ma.mes] || ma.mes) + '/' + ma.ano + ')\n\n'
+          + 'Pedidos no mês: ' + d.pedidos_no_mes + '\n'
+          + 'Realizados: ' + d.realizados + '  |  Cancelados: ' + d.cancelados + '\n'
+          + 'Unidades vendidas: ' + d.unidades_vendidas + '\n\n'
+          + 'Vendido: ' + fmt(d.total_vendas) + '\n'
+          + 'Comissões: ' + fmt(d.total_taxas) + '\n'
+          + 'Líquido (após comissão): ' + fmt(d.total_liquido) + '\n\n'
+          + 'Clique em "📊 Extrato Mercado Livre" para ver os detalhes.');
+      }
+    } catch (e) { alert('Falha: ' + e.message); }
+    finally { btnSync.disabled = false; btnSync.textContent = '🟡 Sincronizar Mercado Livre'; }
+  });
+
+  // ---- PAINEL ----
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100000;display:none;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div id="bpr-ml-box" style="background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:14px;max-width:960px;width:100%;max-height:88vh;overflow:auto;padding:20px;font-family:inherit"></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function (e) { if (e.target === ov) ov.style.display = 'none'; });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ov.style.display = 'none'; });
+  var box = ov.querySelector('#bpr-ml-box');
+  var state = { rows: [], ma: null };
+
+  function card(t, v, cor, key) {
+    var click = key ? ' data-filtro="' + key + '" style="cursor:pointer;flex:1;min-width:115px;background:#1f2937;border:1px solid #374151;border-radius:10px;padding:12px;transition:border-color .15s" onmouseover="this.style.borderColor=\'#6b7280\'" onmouseout="this.style.borderColor=\'#374151\'"' : ' style="flex:1;min-width:115px;background:#1f2937;border-radius:10px;padding:12px"';
+    return '<div' + click + '><div style="font-size:12px;color:#9ca3af">' + t + (key ? ' ›' : '') + '</div><div style="font-size:19px;font-weight:700;color:' + (cor || '#e5e7eb') + '">' + v + '</div></div>';
+  }
+  function badge(st) {
+    if (st === 'realizado') return '<span style="background:#064e3b;color:#34d399;padding:2px 8px;border-radius:6px;font-size:11px">✅ Realizado</span>';
+    if (st === 'cancelado') return '<span style="background:#4c1d24;color:#f87171;padding:2px 8px;border-radius:6px;font-size:11px">❌ Cancelado</span>';
+    return '<span style="background:#3a2e0a;color:#fbbf24;padding:2px 8px;border-radius:6px;font-size:11px">🚚 Em andamento</span>';
+  }
+
+  var FILTROS = {
+    vendido: { titulo: '🛒 Vendido no período', fn: function (r) { return r.status !== 'cancelado'; }, metr: 'venda', label: 'Valor vendido', cor: '#fbbf24' },
+    realizado: { titulo: '✅ Realizados', fn: function (r) { return r.status === 'realizado'; }, metr: 'liquido', label: 'Líquido (após comissão)', cor: '#60a5fa' },
+    andamento: { titulo: '🚚 Em andamento', fn: function (r) { return r.status === 'em_andamento'; }, metr: 'venda', label: 'Valor em andamento', cor: '#fbbf24' },
+    cancelado: { titulo: '❌ Cancelados', fn: function (r) { return r.status === 'cancelado'; }, metr: 'venda', label: 'Valor cancelado', cor: '#f87171' },
+    vendas: { titulo: '💚 Vendas realizadas', fn: function (r) { return r.status === 'realizado'; }, metr: 'venda', label: 'Total de vendas', cor: '#34d399' },
+    taxas: { titulo: '💸 Comissões (realizadas)', fn: function (r) { return r.status === 'realizado'; }, metr: 'taxa', label: 'Total de comissões', cor: '#f87171' },
+    liquido: { titulo: '💙 Líquido (após comissão)', fn: function (r) { return r.status === 'realizado'; }, metr: 'liquido', label: 'Total líquido', cor: '#60a5fa' }
+  };
+
+  async function fetchPaged(tabela, mes, ano) {
+    var all = [], PAGE = 1000, pg = 0;
+    while (true) {
+      var res = await db().from(tabela).select('*').eq('marketplace', 'Mercado Livre').eq('mes', mes).eq('ano', ano).order('data', { ascending: false }).range(pg * PAGE, pg * PAGE + PAGE - 1);
+      if (res.error) throw res.error;
+      var chunk = res.data || [];
+      all = all.concat(chunk);
+      if (chunk.length < PAGE) break;
+      pg++;
+    }
+    return all;
+  }
+  function wireClose() { var c = box.querySelector('#bpr-ml-close'); if (c) c.addEventListener('click', function () { ov.style.display = 'none'; }); }
+  function wireCards() {
+    box.querySelectorAll('[data-filtro]').forEach(function (el) { el.addEventListener('click', function () { renderDetalhe(el.getAttribute('data-filtro')); }); });
+    var b = box.querySelector('#bpr-ml-back'); if (b) b.addEventListener('click', renderResumo);
+  }
+
+  function renderResumo() {
+    var rows = state.rows, ma = state.ma;
+    var vQtd = 0, vVal = 0, rQtd = 0, rVenda = 0, rTaxa = 0, rLiq = 0, aQtd = 0, cQtd = 0, byDay = {};
+    rows.forEach(function (r) {
+      var venda = Number(r.venda) || 0, liq = Number(r.liquido) || 0, taxa = Number(r.taxa) || 0;
+      if (r.status !== 'cancelado') { vQtd++; vVal += venda; }
+      if (r.status === 'realizado') { rQtd++; rVenda += venda; rTaxa += taxa; rLiq += liq; }
+      else if (r.status === 'cancelado') cQtd++; else aQtd++;
+      var d = String(r.data).substring(0, 10);
+      if (!byDay[d]) byDay[d] = { qtd: 0, vendido: 0, liquido: 0 };
+      if (r.status !== 'cancelado') { byDay[d].qtd++; byDay[d].vendido += venda; }
+      byDay[d].liquido += liq;
+    });
+
+    var h = '';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;font-size:20px">📊 Extrato Mercado Livre — ' + (MESES[ma.mes] || ma.mes) + '/' + ma.ano + '</h2><button id="bpr-ml-close" style="background:#374151;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Fechar ✕</button></div>';
+    h += '<div style="font-size:11px;color:#6b7280;margin-bottom:14px">💡 Clique em qualquer card com › para ver a lista separada</div>';
+
+    h += secTitle('🛒 Vendido no período');
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
+    h += card('Pedidos', vQtd, '#e5e7eb', 'vendido') + card('Valor vendido', fmt(vVal), '#fbbf24', 'vendido') + card('✅ Realizados', rQtd, '#34d399', 'realizado') + card('🚚 Em andamento', aQtd, '#fbbf24', 'andamento') + card('❌ Cancelados', cQtd, '#f87171', 'cancelado');
+    h += '</div>';
+
+    h += secTitle('💚 Realizado (venda paga + comissão descontada)');
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
+    h += card('Pedidos', rQtd, '#34d399', 'realizado') + card('Vendas', fmt(rVenda), '#34d399', 'vendas') + card('Comissões', fmt(rTaxa), '#f87171', 'taxas') + card('Líquido (após comissão)', fmt(rLiq), '#60a5fa', 'liquido');
+    h += '</div>';
+
+    var dias = Object.keys(byDay).sort().reverse();
+    h += secTitle('📅 Resumo por dia');
+    h += '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:#9ca3af;border-bottom:1px solid #374151"><th style="padding:6px">Dia</th><th style="padding:6px;text-align:right">Pedidos</th><th style="padding:6px;text-align:right">Vendido</th><th style="padding:6px;text-align:right">Líquido</th></tr></thead><tbody>';
+    dias.forEach(function (d) { var x = byDay[d]; h += '<tr style="border-bottom:1px solid #1f2937"><td style="padding:6px">' + dia(d) + '</td><td style="padding:6px;text-align:right">' + x.qtd + '</td><td style="padding:6px;text-align:right;color:#fbbf24">' + fmt(x.vendido) + '</td><td style="padding:6px;text-align:right;color:#60a5fa">' + fmt(x.liquido) + '</td></tr>'; });
+    h += '</tbody></table>';
+
+    box.innerHTML = h; box.scrollTop = 0; wireClose(); wireCards();
+  }
+
+  function renderDetalhe(key) {
+    var cfg = FILTROS[key]; if (!cfg) return;
+    var rows = state.rows.filter(cfg.fn);
+    var total = 0; rows.forEach(function (r) { total += Number(r[cfg.metr]) || 0; });
+    var h = topo(cfg.titulo);
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' + card('Pedidos', rows.length, '#e5e7eb') + card(cfg.label, fmt(total), cfg.cor) + '</div>';
+    if (rows.length === 0) h += vazio('Nenhum pedido nessa categoria.');
+    else {
+      h += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:#9ca3af;border-bottom:1px solid #374151"><th style="padding:6px">Data</th><th style="padding:6px">Pedido</th><th style="padding:6px">Status</th><th style="padding:6px;text-align:right">Valor</th><th style="padding:6px;text-align:right">Comissão</th><th style="padding:6px;text-align:right">Líquido</th></tr></thead><tbody>';
+      rows.forEach(function (r) { h += '<tr style="border-bottom:1px solid #1f2937"><td style="padding:6px">' + dia(r.data) + '</td><td style="padding:6px">#' + (r.order_sn || '') + '</td><td style="padding:6px">' + badge(r.status) + '</td><td style="padding:6px;text-align:right">' + fmt(r.venda) + '</td><td style="padding:6px;text-align:right;color:#f87171">' + (Number(r.taxa) > 0 ? fmt(r.taxa) : '—') + '</td><td style="padding:6px;text-align:right;color:#60a5fa">' + (Number(r.liquido) > 0 ? fmt(r.liquido) : '—') + '</td></tr>'; });
+      h += '</tbody></table>';
+    }
+    box.innerHTML = h; box.scrollTop = 0; wireClose(); wireCards();
+  }
+
+  function secTitle(t) { return '<div style="font-size:13px;color:#9ca3af;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.5px">' + t + '</div>'; }
+  function vazio(t) { return '<div style="text-align:center;padding:24px;color:#9ca3af">' + t + '</div>'; }
+  function topo(titulo) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;font-size:19px">' + titulo + '</h2><div><button id="bpr-ml-back" style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:8px;padding:6px 12px;cursor:pointer;margin-right:6px">← Voltar</button><button id="bpr-ml-close" style="background:#374151;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Fechar ✕</button></div></div>';
+  }
+
+  btnExt.addEventListener('click', async function () {
+    var ma = getMA();
+    ov.style.display = 'flex';
+    box.innerHTML = '<div style="text-align:center;padding:40px">Carregando extrato...</div>';
+    try {
+      state.rows = await fetchPaged('extrato_marketplace', ma.mes, ma.ano);
+      state.ma = ma;
+      renderResumo();
+    } catch (e) {
+      box.innerHTML = '<div style="padding:30px;color:#f87171">Erro ao carregar: ' + e.message + '</div><div style="text-align:center;color:#9ca3af">(clique fora pra fechar)</div>';
+    }
+  });
+});
+</script>
+<!-- ===== FIM DO BOTÃO SINCRONIZAR MERCADO LIVRE ===== -->
 </html>
