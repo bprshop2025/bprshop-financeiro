@@ -2403,7 +2403,8 @@ window.addEventListener('load', function () {
     cancelado: { titulo: '❌ Cancelados', fn: function (r) { return r.status === 'cancelado'; }, metr: 'venda', label: 'Valor cancelado', cor: '#f87171' },
     vendas: { titulo: '💚 Vendas realizadas', fn: function (r) { return r.status === 'realizado'; }, metr: 'venda', label: 'Total de vendas', cor: '#34d399' },
     taxas: { titulo: '💸 Comissões (realizadas)', fn: function (r) { return r.status === 'realizado'; }, metr: 'taxa', label: 'Total de comissões', cor: '#f87171' },
-    liquido: { titulo: '💙 Líquido (após comissão)', fn: function (r) { return r.status === 'realizado'; }, metr: 'liquido', label: 'Total líquido', cor: '#60a5fa' }
+    liquido: { titulo: '💙 Líquido (após comissão)', fn: function (r) { return r.status === 'realizado'; }, metr: 'liquido', label: 'Total líquido', cor: '#60a5fa' },
+    devolucao: { titulo: '↩️ Devoluções / Estornos', fn: function (r) { return r.tipo === 'devolucao'; }, metr: 'venda', label: 'Total devolvido', cor: '#fb923c' }
   };
 
   async function fetchPaged(tabela, mes, ano) {
@@ -2427,8 +2428,20 @@ window.addEventListener('load', function () {
   function renderResumo() {
     var rows = state.rows, ma = state.ma;
     var vQtd = 0, vVal = 0, rQtd = 0, rVenda = 0, rTaxa = 0, rLiq = 0, aQtd = 0, cQtd = 0, byDay = {};
+    var devQtd = 0, devVenda = 0, devTaxa = 0, devLiq = 0;
     rows.forEach(function (r) {
       var venda = Number(r.venda) || 0, liq = Number(r.liquido) || 0, taxa = Number(r.taxa) || 0;
+
+      // DEVOLUÇÕES: tratadas à parte (não entram como venda/realizado)
+      if (r.tipo === 'devolucao') {
+        devQtd++; devVenda += venda; devTaxa += taxa; devLiq += liq;
+        var dd = String(r.data).substring(0, 10);
+        if (!byDay[dd]) byDay[dd] = { qtd: 0, vendido: 0, liquido: 0 };
+        byDay[dd].vendido += venda;   // venda já é negativa
+        byDay[dd].liquido += liq;     // liquido já é negativo
+        return;
+      }
+
       if (r.status !== 'cancelado') { vQtd++; vVal += venda; }
       if (r.status === 'realizado') { rQtd++; rVenda += venda; rTaxa += taxa; rLiq += liq; }
       else if (r.status === 'cancelado') cQtd++; else aQtd++;
@@ -2437,6 +2450,9 @@ window.addEventListener('load', function () {
       if (r.status !== 'cancelado') { byDay[d].qtd++; byDay[d].vendido += venda; }
       byDay[d].liquido += liq;
     });
+
+    // líquido final = realizado − devoluções (devLiq já é negativo, então soma)
+    var liqFinal = rLiq + devLiq;
 
     var h = '';
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;font-size:20px">📊 Extrato Mercado Livre — ' + (MESES[ma.mes] || ma.mes) + '/' + ma.ano + '</h2><button id="bpr-ml-close" style="background:#374151;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Fechar ✕</button></div>';
@@ -2450,6 +2466,11 @@ window.addEventListener('load', function () {
     h += secTitle('💚 Realizado (venda paga + comissão descontada)');
     h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
     h += card('Pedidos', rQtd, '#34d399', 'realizado') + card('Vendas', fmt(rVenda), '#34d399', 'vendas') + card('Comissões', fmt(rTaxa), '#f87171', 'taxas') + card('Líquido (após comissão)', fmt(rLiq), '#60a5fa', 'liquido');
+    h += '</div>';
+
+    h += secTitle('↩️ Devoluções / Estornos');
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
+    h += card('Devoluções', devQtd, '#fb923c', 'devolucao') + card('Valor devolvido', fmt(devVenda), '#fb923c', 'devolucao') + card('Comissão estornada', fmt(devTaxa), '#34d399') + card('💰 Líquido FINAL (− devoluções)', fmt(liqFinal), '#60a5fa');
     h += '</div>';
 
     var dias = Object.keys(byDay).sort().reverse();
