@@ -476,6 +476,10 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="18" x2="13" y2="18"/><line x1="9" y1="11" x2="9" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="15" y1="11" x2="15" y2="11.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
       Precificação
     </button>
+    <button class="nav-item" onclick="showTab('sincronizar',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      Sincronizar
+    </button>
   </nav>
   <div class="conn-badge" style="flex-direction:column;align-items:flex-start;gap:4px">
     <div style="display:flex;align-items:center;gap:6px">
@@ -969,6 +973,28 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 
   <div id="prec-resultado" class="cards"></div>
+</section>
+
+<!-- SINCRONIZAR -->
+<section id="tab-sincronizar" class="section">
+  <div class="page-header">
+    <div><div class="page-title">🔄 Sincronizar</div><div class="page-sub">Puxe pedidos e veja o extrato de cada marketplace</div></div>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <div style="font-weight:600;color:var(--ml);margin-bottom:4px">Mercado Livre</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Puxa pedidos e devoluções do mês selecionado.</div>
+      <button class="btn" onclick="bprSync('bpr-ml-sync')" style="background:#ffe600;color:#2d3277;font-weight:700;width:100%;margin-bottom:8px">🟡 Sincronizar Mercado Livre</button>
+      <button class="btn btn-ghost" onclick="bprSync('bpr-ml-ext')" style="width:100%">📊 Ver Extrato Mercado Livre</button>
+    </div>
+    <div class="panel">
+      <div style="font-weight:600;color:var(--sh);margin-bottom:4px">Shopee</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Puxa pedidos e devoluções do mês selecionado.</div>
+      <button class="btn" onclick="bprSync('bpr-shopee-sync')" style="background:#f97316;color:#fff;font-weight:600;width:100%;margin-bottom:8px">🛒 Sincronizar Shopee</button>
+      <button class="btn btn-ghost" onclick="bprSync('bpr-shopee-ext')" style="width:100%">📊 Ver Extrato Shopee</button>
+    </div>
+  </div>
+  <div class="panel" style="font-size:12px;color:var(--text2)">💡 Dica: selecione o <b>mês e ano</b> lá em cima antes de sincronizar — a sincronização puxa os dados desse período.</div>
 </section>
 
 </main>
@@ -2151,6 +2177,13 @@ if (sessionStorage.getItem("bpr_auth") === "1") {
   initApp();
 }
 
+// ===================== SINCRONIZAR (relay para botões reais) =====================
+function bprSync(id) {
+  var b = document.getElementById(id);
+  if (b) { b.click(); }
+  else { toast('Ainda carregando, tente de novo em 1 segundo.', 'error'); }
+}
+
 // ===================== PRECIFICAÇÃO =====================
 const PREC_MKTS = [
   { nome: 'Shopee', cor: 'var(--sh)' },
@@ -2326,15 +2359,17 @@ window.addEventListener('load', function () {
 
   var wrap = document.createElement('div');
   wrap.id = 'bpr-shopee-tools';
-  wrap.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:none;flex-direction:column;gap:8px;align-items:flex-end;font-family:inherit';
+  wrap.style.cssText = 'position:fixed;left:-9999px;top:-9999px;z-index:-1;display:none;flex-direction:column;gap:8px;font-family:inherit';
   document.body.appendChild(wrap);
 
   var btnSync = document.createElement('button');
+  btnSync.id = 'bpr-shopee-sync';
   btnSync.textContent = '🛒 Sincronizar Shopee';
   btnSync.style.cssText = 'background:#f97316;color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
   wrap.appendChild(btnSync);
 
   var btnExt = document.createElement('button');
+  btnExt.id = 'bpr-shopee-ext';
   btnExt.textContent = '📊 Extrato Shopee';
   btnExt.style.cssText = 'background:#1f2937;color:#fff;border:1px solid #374151;padding:10px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
   wrap.appendChild(btnExt);
@@ -2542,15 +2577,17 @@ window.addEventListener('load', function () {
 
   var wrap = document.createElement('div');
   wrap.id = 'bpr-ml-tools';
-  wrap.style.cssText = 'position:fixed;bottom:130px;right:20px;z-index:99999;display:none;flex-direction:column;gap:8px;align-items:flex-end;font-family:inherit';
+  wrap.style.cssText = 'position:fixed;left:-9999px;top:-9999px;z-index:-1;display:none;flex-direction:column;gap:8px;font-family:inherit';
   document.body.appendChild(wrap);
 
   var btnSync = document.createElement('button');
+  btnSync.id = 'bpr-ml-sync';
   btnSync.textContent = '🟡 Sincronizar Mercado Livre';
   btnSync.style.cssText = 'background:#ffe600;color:#2d3277;border:none;padding:12px 18px;border-radius:10px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
   wrap.appendChild(btnSync);
 
   var btnExt = document.createElement('button');
+  btnExt.id = 'bpr-ml-ext';
   btnExt.textContent = '📊 Extrato Mercado Livre';
   btnExt.style.cssText = 'background:#1f2937;color:#fff;border:1px solid #374151;padding:10px 18px;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:14px';
   wrap.appendChild(btnExt);
