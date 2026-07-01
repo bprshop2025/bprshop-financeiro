@@ -472,6 +472,10 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 3H8l-2 4h12l-2-4z"/></svg>
       Estoque
     </button>
+    <button class="nav-item" onclick="showTab('precificacao',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="18" x2="13" y2="18"/><line x1="9" y1="11" x2="9" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="15" y1="11" x2="15" y2="11.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
+      Precificação
+    </button>
   </nav>
   <div class="conn-badge" style="flex-direction:column;align-items:flex-start;gap:4px">
     <div style="display:flex;align-items:center;gap:6px">
@@ -926,6 +930,47 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </section>
 
+<!-- PRECIFICAÇÃO -->
+<section id="tab-precificacao" class="section">
+  <div class="page-header">
+    <div><div class="page-title">🧮 Precificação</div><div class="page-sub">Calcule preço e lucro nos 3 marketplaces de uma vez</div></div>
+  </div>
+
+  <div class="panel">
+    <div style="font-size:14px;font-weight:500;margin-bottom:12px">Custos do produto</div>
+    <div class="two-col" style="margin-bottom:0">
+      <div class="fg"><label>Custo do produto (R$)</label><input type="text" id="prec-custo" placeholder="Ex: 25,00" oninput="precCalcular()"></div>
+      <div class="fg"><label>Embalagem (R$)</label><input type="text" id="prec-emb" placeholder="Ex: 2,00" oninput="precCalcular()"></div>
+    </div>
+    <div class="two-col" style="margin-bottom:0;margin-top:12px">
+      <div class="fg"><label>Frete / envio (R$)</label><input type="text" id="prec-frete" placeholder="Ex: 0,00" oninput="precCalcular()"></div>
+      <div class="fg"><label>&nbsp;</label><div style="font-size:12px;color:var(--text2);padding:9px 2px">Esses custos valem pros 3 marketplaces.</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="font-size:14px;font-weight:500;margin-bottom:12px">O que você quer calcular?</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn btn-primary" id="prec-mode-preco" onclick="precSetMode('preco')" style="width:auto;flex:1;min-width:180px">Calcular PREÇO ideal</button>
+      <button class="btn btn-ghost" id="prec-mode-lucro" onclick="precSetMode('lucro')" style="flex:1;min-width:180px">Calcular LUCRO de um preço</button>
+    </div>
+    <div id="prec-input-preco" style="font-size:12px;color:var(--text2)">No modo PREÇO, cada marketplace usa a <b>margem desejada</b> que você configurar abaixo.</div>
+    <div id="prec-input-lucro" style="display:none">
+      <div class="fg" style="max-width:320px"><label>Preço de venda (R$)</label><input type="text" id="prec-preco" placeholder="Ex: 79,90" oninput="precCalcular()"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:500">Taxas por marketplace</div>
+      <button class="btn btn-ghost" onclick="savePrecConfig()" style="width:auto;font-size:12px;padding:7px 14px">💾 Salvar taxas</button>
+    </div>
+    <div id="prec-config"><div class="loading">Carregando...</div></div>
+  </div>
+
+  <div id="prec-resultado" class="cards"></div>
+</section>
+
 </main>
 </div>
 
@@ -980,6 +1025,7 @@ function showTab(id, btn) {
   if (id === 'fluxo') renderFluxo();
   if (id === 'dre') renderDRE();
   if (id === 'estoque') { loadEstoque().then(renderEstoque); }
+  if (id === 'precificacao') loadPrecConfig();
 }
 
 function updateCats() {
@@ -2104,6 +2150,165 @@ if (sessionStorage.getItem("bpr_auth") === "1") {
   document.getElementById("login-screen").style.display = "none";
   initApp();
 }
+
+// ===================== PRECIFICAÇÃO =====================
+const PREC_MKTS = [
+  { nome: 'Shopee', cor: 'var(--sh)' },
+  { nome: 'Mercado Livre', cor: 'var(--ml)' },
+  { nome: 'TikTok Shop', cor: 'var(--tt)' }
+];
+let precConfig = {};
+let precMode = 'preco';
+
+function precParse(v) {
+  if (v === null || v === undefined) return 0;
+  let s = String(v).trim().replace(/\s/g, '').replace('R$', '');
+  if (s.indexOf(',') > -1) { s = s.replace(/\./g, '').replace(',', '.'); }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+function precFmt(n) {
+  return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
+}
+function precFieldVal(c, f) {
+  const v = c ? c[f] : null;
+  if (v === null || v === undefined || Number(v) === 0) return '';
+  return String(v).replace('.', ',');
+}
+function precRow(label, val, cor) {
+  return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0">' +
+    '<span style="color:var(--text2)">' + label + '</span>' +
+    '<span style="color:' + (cor || 'var(--text)') + ';font-weight:500;font-family:\'DM Mono\',monospace">' + val + '</span></div>';
+}
+
+async function loadPrecConfig() {
+  document.getElementById('prec-config').innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    const { data, error } = await sb.from('config_precificacao').select('*');
+    if (error) throw error;
+    precConfig = {};
+    (data || []).forEach(r => { precConfig[r.marketplace] = r; });
+    renderPrecConfig();
+    precCalcular();
+  } catch (e) {
+    document.getElementById('prec-config').innerHTML =
+      '<div class="empty">Erro ao carregar taxas: ' + (e.message || e) + '</div>';
+  }
+}
+
+function renderPrecConfig() {
+  let html = '';
+  PREC_MKTS.forEach(m => {
+    const c = precConfig[m.nome] || {};
+    html += '<div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr 1fr;gap:10px;align-items:end;margin-bottom:12px">' +
+      '<div style="font-weight:600;font-size:13px;color:' + m.cor + ';padding-bottom:9px">' + m.nome + '</div>' +
+      '<div class="fg"><label>Comissão %</label><input type="text" data-mkt="' + m.nome + '" data-f="comissao_pct" value="' + precFieldVal(c, 'comissao_pct') + '" placeholder="0" oninput="precCalcular()"></div>' +
+      '<div class="fg"><label>Taxa fixa R$</label><input type="text" data-mkt="' + m.nome + '" data-f="taxa_fixa" value="' + precFieldVal(c, 'taxa_fixa') + '" placeholder="0" oninput="precCalcular()"></div>' +
+      '<div class="fg"><label>Imposto %</label><input type="text" data-mkt="' + m.nome + '" data-f="imposto_pct" value="' + precFieldVal(c, 'imposto_pct') + '" placeholder="0" oninput="precCalcular()"></div>' +
+      '<div class="fg"><label>Margem %</label><input type="text" data-mkt="' + m.nome + '" data-f="margem_pct" value="' + precFieldVal(c, 'margem_pct') + '" placeholder="0" oninput="precCalcular()"></div>' +
+      '</div>';
+  });
+  document.getElementById('prec-config').innerHTML = html;
+}
+
+function precReadConfig() {
+  const cfg = {};
+  PREC_MKTS.forEach(m => cfg[m.nome] = { comissao_pct: 0, taxa_fixa: 0, imposto_pct: 0, margem_pct: 0 });
+  document.querySelectorAll('#prec-config input[data-mkt]').forEach(inp => {
+    const mkt = inp.getAttribute('data-mkt'), f = inp.getAttribute('data-f');
+    if (cfg[mkt]) cfg[mkt][f] = precParse(inp.value);
+  });
+  return cfg;
+}
+
+async function savePrecConfig() {
+  const cfg = precReadConfig();
+  try {
+    for (const m of PREC_MKTS) {
+      const c = cfg[m.nome];
+      const { error } = await sb.from('config_precificacao')
+        .update({
+          comissao_pct: c.comissao_pct, taxa_fixa: c.taxa_fixa,
+          imposto_pct: c.imposto_pct, margem_pct: c.margem_pct,
+          updated_at: new Date().toISOString()
+        })
+        .eq('marketplace', m.nome);
+      if (error) throw error;
+      precConfig[m.nome] = Object.assign({ marketplace: m.nome }, c);
+    }
+    toast('Taxas salvas! 💾');
+  } catch (e) {
+    toast('Erro ao salvar: ' + (e.message || e), 'error');
+  }
+}
+
+function precSetMode(mode) {
+  precMode = mode;
+  document.getElementById('prec-mode-preco').className = 'btn ' + (mode === 'preco' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('prec-mode-lucro').className = 'btn ' + (mode === 'lucro' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('prec-input-lucro').style.display = mode === 'lucro' ? 'block' : 'none';
+  document.getElementById('prec-input-preco').style.display = mode === 'preco' ? 'block' : 'none';
+  precCalcular();
+}
+
+function precCalcular() {
+  const el = document.getElementById('prec-resultado');
+  if (!el) return;
+  const custo = precParse((document.getElementById('prec-custo') || {}).value);
+  const emb = precParse((document.getElementById('prec-emb') || {}).value);
+  const frete = precParse((document.getElementById('prec-frete') || {}).value);
+  const C = custo + emb + frete;
+  const cfg = precReadConfig();
+  const precoVenda = precParse((document.getElementById('prec-preco') || {}).value);
+
+  let html = '';
+  PREC_MKTS.forEach(m => {
+    const c = cfg[m.nome];
+    const com = c.comissao_pct, imp = c.imposto_pct, mar = c.margem_pct, fix = c.taxa_fixa;
+    let linhas = '';
+
+    if (precMode === 'preco') {
+      const denom = 1 - (com + imp + mar) / 100;
+      if (denom <= 0) {
+        linhas = '<div style="color:var(--red);font-size:13px;margin-top:8px">Impossível: comissão + imposto + margem somam ' +
+          (com + imp + mar).toFixed(1) + '% (≥ 100%). Reduza a margem.</div>';
+      } else {
+        const P = (C + fix) / denom;
+        const comV = P * com / 100, impV = P * imp / 100;
+        const lucro = P - C - fix - comV - impV;
+        linhas =
+          '<div style="font-size:26px;font-weight:600;color:' + m.cor + ';margin:6px 0 2px;font-family:\'DM Mono\',monospace">' + precFmt(P) + '</div>' +
+          '<div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Preço de venda sugerido</div>' +
+          precRow('Custo total', precFmt(C)) +
+          precRow('Comissão (' + com + '%)', '− ' + precFmt(comV)) +
+          precRow('Taxa fixa', '− ' + precFmt(fix)) +
+          precRow('Imposto (' + imp + '%)', '− ' + precFmt(impV)) +
+          '<div style="height:1px;background:var(--border);margin:8px 0"></div>' +
+          precRow('Lucro (' + mar + '% da venda)', precFmt(lucro), 'var(--green)');
+      }
+    } else {
+      const P = precoVenda;
+      const comV = P * com / 100, impV = P * imp / 100;
+      const lucro = P - C - fix - comV - impV;
+      const margemReal = P > 0 ? (lucro / P * 100) : 0;
+      const cor = lucro >= 0 ? 'var(--green)' : 'var(--red)';
+      linhas =
+        '<div style="font-size:26px;font-weight:600;color:' + cor + ';margin:6px 0 2px;font-family:\'DM Mono\',monospace">' + precFmt(lucro) + '</div>' +
+        '<div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Lucro' + (P > 0 ? ' (' + margemReal.toFixed(1) + '% da venda)' : '') + '</div>' +
+        precRow('Preço de venda', precFmt(P)) +
+        precRow('Custo total', '− ' + precFmt(C)) +
+        precRow('Comissão (' + com + '%)', '− ' + precFmt(comV)) +
+        precRow('Taxa fixa', '− ' + precFmt(fix)) +
+        precRow('Imposto (' + imp + '%)', '− ' + precFmt(impV));
+    }
+
+    html += '<div class="panel" style="margin-bottom:0">' +
+      '<div style="font-weight:600;font-size:13px;color:' + m.cor + ';margin-bottom:4px">' + m.nome + '</div>' +
+      linhas + '</div>';
+  });
+  el.innerHTML = html;
+}
+
 </script>
 <!-- ===== BOTÃO SINCRONIZAR SHOPEE (cole isto logo antes de </body>) ===== -->
 <script>
