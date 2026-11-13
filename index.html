@@ -491,6 +491,10 @@ tr:hover td { background: rgba(0,0,0,0.02); }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
       Lucro por Produto
     </button>
+    <button class="nav-item" onclick="showTab('avaliacoes',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M12 7.2l.9 1.9 2.1.3-1.5 1.4.4 2.1-1.9-1-1.9 1 .4-2.1L9 9.4l2.1-.3z"/></svg>
+      Avaliações
+    </button>
   </nav>
   <div class="conn-badge" style="flex-direction:column;align-items:flex-start;gap:4px">
     <div style="display:flex;align-items:center;gap:6px">
@@ -1183,6 +1187,39 @@ tr:hover td { background: rgba(0,0,0,0.02); }
   </div>
 </section>
 
+<section id="tab-avaliacoes" class="section">
+  <div class="page-header">
+    <div><div class="page-title">⭐ Avaliações</div><div class="page-sub">Respostas às avaliações da Shopee — 4 e 5 estrelas no automático, 3 ou menos sempre com aprovação</div></div>
+  </div>
+
+  <div class="cards" id="av-cards" style="margin-bottom:1rem"></div>
+
+  <div class="panel" id="av-senha-panel" style="display:none;margin-bottom:1rem;background:var(--yellow-bg,#fef3c7);border-color:rgba(217,119,6,0.3)">
+    <div class="panel-title" id="av-senha-titulo" style="margin-bottom:6px">🔒 Senha de aprovação</div>
+    <div id="av-senha-sub" style="font-size:12.5px;color:#92400e;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="password" id="av-senha-input" placeholder="Senha de aprovação" autocomplete="new-password" style="max-width:260px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;font-size:13px" onkeydown="if(event.key==='Enter')avSalvarSenha()">
+      <button class="btn btn-primary btn-sm" style="width:auto;margin-top:0" onclick="avSalvarSenha()">Confirmar</button>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:1rem">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px" id="av-estado"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="avAtualizar()">🔄 Buscar novas</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="avGerarRascunhos()">✍️ Gerar rascunhos</button>
+        <button class="btn btn-primary btn-sm" style="width:auto;margin-top:0" id="av-btn-publicar-prontas" onclick="avPublicarProntas()">✅ Publicar prontas</button>
+      </div>
+    </div>
+    <div id="av-progresso" style="display:none;margin-top:10px;font-size:12.5px;color:var(--text2)"></div>
+  </div>
+
+  <div class="filters" id="av-filtros"></div>
+  <div id="av-lista-info" style="font-size:11.5px;color:var(--text2);margin-bottom:8px"></div>
+  <div id="av-lista"></div>
+</section>
+
 </main>
 </div>
 
@@ -1239,6 +1276,7 @@ function showTab(id, btn) {
   if (id === 'estoque') { loadEstoque().then(renderEstoque); }
   if (id === 'precificacao') loadPrecConfig();
   if (id === 'lucroproduto') lpLoad();
+  if (id === 'avaliacoes') avLoad();
 }
 
 function updateCats() {
@@ -2727,6 +2765,342 @@ Promise.all([render(), loadContas()]).then(() => {
 if (sessionStorage.getItem("bpr_auth") === "1") {
   document.getElementById("login-screen").style.display = "none";
   initApp();
+}
+
+// ===================== AVALIAÇÕES (SHOPEE) =====================
+const AV_FN_URL = SUPABASE_URL + '/functions/v1/shopee-reviews';
+let avFiltro = 'aguardando_aprovacao';
+let avStatus = null;
+let avNomes = {};
+let avLinhas = [];
+let avContagens = {};
+let avOcupado = false;
+
+const AV_FILTROS = [
+  { id: 'aguardando_aprovacao', label: 'Para aprovar' },
+  { id: 'pronta_auto', label: 'Prontas (4 e 5★)' },
+  { id: 'pendente', label: 'Sem rascunho' },
+  { id: 'publicada', label: 'Publicadas' },
+  { id: 'erro', label: 'Com erro' },
+  { id: 'ignorada', label: 'Ignoradas' },
+];
+const AV_TXT_STYLE = 'width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;font-size:13px;line-height:1.45;resize:vertical';
+
+function avEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function avEstrelas(n) { n = Number(n) || 0; return '★'.repeat(n) + '☆'.repeat(Math.max(0, 5 - n)); }
+function avData(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+function avNomeProduto(itemId) { const n = avNomes[String(itemId)] || ''; if (!n) return 'Produto ' + itemId; return n.length > 80 ? n.slice(0, 80) + '…' : n; }
+function avProgresso(msg) { const el = document.getElementById('av-progresso'); if (!el) return; if (!msg) { el.style.display = 'none'; el.textContent = ''; } else { el.style.display = 'block'; el.textContent = msg; } }
+
+function avMostrarSenha() {
+  const p = document.getElementById('av-senha-panel');
+  if (!p) return;
+  const sub = document.getElementById('av-senha-sub');
+  const tit = document.getElementById('av-senha-titulo');
+  if (avStatus && !avStatus.senha_definida) {
+    tit.textContent = '🔒 Crie a senha de aprovação';
+    sub.textContent = avStatus.pode_definir_senha
+      ? 'Essa senha é pedida para publicar, editar ou ignorar respostas. Ela é conferida no servidor (não fica no código do site). Use pelo menos 6 caracteres e não repita a senha de login.'
+      : 'A criação da senha ainda não está liberada. Peça a liberação antes de continuar.';
+  } else {
+    tit.textContent = '🔒 Senha de aprovação';
+    sub.textContent = 'Digite a senha de aprovação para publicar, editar ou ignorar respostas. Ela vale até você fechar a aba do navegador.';
+  }
+  p.style.display = 'block';
+  const inp = document.getElementById('av-senha-input');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+
+async function avSalvarSenha() {
+  const inp = document.getElementById('av-senha-input');
+  const pin = (inp.value || '').trim();
+  if (pin.length < 6) { toast('A senha precisa ter pelo menos 6 caracteres.', 'error'); return; }
+  if (avStatus && !avStatus.senha_definida) {
+    const d = await avChamar({ action: 'definir_pin', pin: pin }, false);
+    if (!d) return;
+    if (!d.ok) { toast(d.error || 'Não foi possível criar a senha.', 'error'); return; }
+    sessionStorage.setItem('bpr_av_pin', pin);
+    toast('Senha de aprovação criada.');
+    if (typeof registrarLog === 'function') registrarLog('Avaliações', 'Senha de aprovação criada');
+  } else {
+    sessionStorage.setItem('bpr_av_pin', pin);
+    const d = await avChamar({ action: 'verificar_senha' }, true);
+    if (!d || !d.ok) return;
+    toast('Senha confirmada.');
+  }
+  document.getElementById('av-senha-panel').style.display = 'none';
+  avLoad();
+}
+
+async function avChamar(body, precisaSenha) {
+  if (precisaSenha) {
+    const pin = sessionStorage.getItem('bpr_av_pin');
+    if (!pin) { avMostrarSenha(); return null; }
+    body.pin = pin;
+  }
+  try {
+    const r = await fetch(AV_FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_KEY, 'apikey': SUPABASE_KEY },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d && d.auth === false) {
+      sessionStorage.removeItem('bpr_av_pin');
+      const msgs = {
+        senha_incorreta: 'Senha de aprovação incorreta.',
+        senha_nao_definida: 'A senha de aprovação ainda não foi criada.',
+        bloqueado_temporariamente: 'Muitas tentativas erradas. Tente de novo em 15 minutos.',
+        senha_necessaria: 'Digite a senha de aprovação.',
+      };
+      toast(msgs[d.motivo] || 'Não autorizado.', 'error');
+      avMostrarSenha();
+      return null;
+    }
+    if (d && d.error && d.ok === undefined) { toast('Erro: ' + d.error, 'error'); return null; }
+    return d;
+  } catch (e) {
+    toast('Erro de conexão: ' + e.message, 'error');
+    return null;
+  }
+}
+
+function avCard(label, value, cor, sub) {
+  return '<div class="card"><div class="card-label">' + label + '</div><div class="card-value" style="color:' + cor + '">' + value + '</div>' + (sub ? '<div class="card-sub">' + sub + '</div>' : '') + '</div>';
+}
+
+async function avCarregarContagens() {
+  const sts = ['aguardando_aprovacao', 'pronta_auto', 'pendente', 'publicada', 'erro', 'ignorada', 'ja_respondida'];
+  const res = await Promise.all(sts.map(function (s) {
+    return sb.from('shopee_avaliacoes').select('comment_id', { count: 'exact', head: true }).eq('status', s);
+  }));
+  avContagens = {};
+  sts.forEach(function (s, i) { avContagens[s] = (res[i] && res[i].count) || 0; });
+}
+
+function avRenderTopo() {
+  const c = avContagens;
+  document.getElementById('av-cards').innerHTML =
+    avCard('Para aprovar', c.aguardando_aprovacao || 0, (c.aguardando_aprovacao || 0) > 0 ? 'var(--red)' : 'var(--text)', 'esperando você') +
+    avCard('Prontas 4 e 5★', c.pronta_auto || 0, 'var(--text)', 'rascunho pronto') +
+    avCard('Sem rascunho', c.pendente || 0, 'var(--text)', avStatus && avStatus.ia_configurada ? 'na fila da IA' : 'com texto, aguardando a IA') +
+    avCard('Publicadas', c.publicada || 0, 'var(--green)', 'pelo sistema') +
+    avCard('Com erro', c.erro || 0, (c.erro || 0) > 0 ? 'var(--red)' : 'var(--text)', 'falha ao publicar');
+
+  const st = avStatus || {};
+  const auto = st.auto_ativo
+    ? '<span class="badge badge-green">Automático ligado</span>'
+    : '<span class="badge badge-gray">Automático desligado</span>';
+  const ia = st.ia_configurada
+    ? '<span class="badge badge-green">IA configurada</span>'
+    : '<span class="badge badge-red">IA sem chave</span>';
+  document.getElementById('av-estado').innerHTML = auto + ia +
+    '<button class="btn btn-ghost btn-sm" style="width:auto" onclick="avToggleAuto()">' + (st.auto_ativo ? 'Desligar automático' : 'Ligar automático') + '</button>';
+
+  const btn = document.getElementById('av-btn-publicar-prontas');
+  if (btn) btn.textContent = '✅ Publicar prontas (' + (c.pronta_auto || 0) + ')';
+
+  document.getElementById('av-filtros').innerHTML = AV_FILTROS.map(function (f) {
+    const n = c[f.id] || 0;
+    return '<button class="filt' + (f.id === avFiltro ? ' active' : '') + '" onclick="avSetFiltro(\'' + f.id + '\')">' + f.label + ' (' + n + ')</button>';
+  }).join('');
+}
+
+function avSetFiltro(f) { avFiltro = f; avCarregarLista(); avRenderTopo(); }
+
+async function avCarregarLista() {
+  const el = document.getElementById('av-lista');
+  el.innerHTML = '<div class="loading">Carregando...</div>';
+  const ordemCol = avFiltro === 'publicada' ? 'publicada_em' : 'data_avaliacao';
+  const { data, error } = await sb.from('shopee_avaliacoes').select('*').eq('status', avFiltro).order(ordemCol, { ascending: false }).limit(100);
+  if (error) { el.innerHTML = '<div class="panel" style="color:var(--red)">Erro ao carregar: ' + avEsc(error.message) + '</div>'; return; }
+  avLinhas = data || [];
+  const total = avContagens[avFiltro] || avLinhas.length;
+  document.getElementById('av-lista-info').textContent = avLinhas.length < total ? ('Mostrando as ' + avLinhas.length + ' mais recentes de ' + total + '.') : '';
+  if (avLinhas.length === 0) { el.innerHTML = '<div class="panel" style="text-align:center;color:var(--text2);font-size:13px">Nada por aqui. 🎉</div>'; return; }
+  el.innerHTML = avLinhas.map(avRenderLinha).join('');
+}
+
+function avRenderLinha(a) {
+  const id = a.comment_id;
+  const corEstrela = (a.estrelas || 0) >= 4 ? '#d97706' : 'var(--red)';
+  const badges = [];
+  if (a.tem_midia) badges.push('<span class="badge badge-gray">📷 com foto/vídeo</span>');
+  if (a.origem_rascunho === 'ia') badges.push('<span class="badge badge-gray">rascunho: IA</span>');
+  if (a.origem_rascunho === 'variacao') badges.push('<span class="badge badge-gray">rascunho: padrão</span>');
+  if (a.origem_rascunho === 'manual') badges.push('<span class="badge badge-gray">editada à mão</span>');
+
+  let h = '<div class="panel" style="margin-bottom:10px">';
+  h += '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">';
+  h += '<div style="font-size:12px;color:var(--text2)"><span style="color:' + corEstrela + ';font-size:15px;letter-spacing:1px">' + avEstrelas(a.estrelas) + '</span> &nbsp;' + avData(a.data_avaliacao) + ' · ' + avEsc(a.buyer_username || 'cliente') + '</div>';
+  h += '<div style="display:flex;gap:4px;flex-wrap:wrap">' + badges.join('') + '</div></div>';
+  h += '<div style="font-size:11.5px;color:var(--text2);margin-top:4px">' + avEsc(avNomeProduto(a.item_id)) + '</div>';
+  h += '<div style="margin:8px 0 10px;font-size:13.5px;white-space:pre-wrap;line-height:1.45">' + (String(a.comentario || '').trim() ? avEsc(a.comentario) : '<span style="color:var(--text2);font-style:italic">(só estrelas, sem texto)</span>') + '</div>';
+
+  if (a.status === 'aguardando_aprovacao' && a.motivo_aprovacao) {
+    h += '<div style="font-size:11.5px;color:#92400e;background:var(--yellow-bg,#fef3c7);border-radius:6px;padding:5px 8px;margin-bottom:8px">Por que precisa de aprovação: ' + avEsc(a.motivo_aprovacao) + '</div>';
+  }
+  if (a.status === 'erro' && a.erro) {
+    h += '<div style="font-size:11.5px;color:var(--red);background:var(--red-bg);border-radius:6px;padding:5px 8px;margin-bottom:8px">Erro ao publicar: ' + avEsc(a.erro) + '</div>';
+  }
+
+  if (a.status === 'publicada') {
+    h += '<div style="font-size:11px;color:var(--text2);margin-bottom:4px">Resposta publicada em ' + avData(a.publicada_em) + '</div>';
+    h += '<div style="font-size:13px;white-space:pre-wrap;background:var(--green-bg);border-radius:8px;padding:8px 10px">' + avEsc(a.resposta_publicada || '') + '</div>';
+  } else if (a.status === 'ignorada') {
+    if (a.rascunho) h += '<div style="font-size:13px;white-space:pre-wrap;color:var(--text2);margin-bottom:8px">' + avEsc(a.rascunho) + '</div>';
+    h += '<button class="btn btn-ghost btn-sm" style="width:auto" onclick="avReabrir(' + id + ')">Reabrir</button>';
+  } else {
+    h += '<textarea id="av-txt-' + id + '" rows="3" maxlength="500" style="' + AV_TXT_STYLE + '" placeholder="' + (a.status === 'pendente' ? 'Sem rascunho ainda. Você pode escrever a resposta aqui.' : '') + '">' + avEsc(a.rascunho || '') + '</textarea>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
+    h += '<button class="btn btn-primary btn-sm" style="width:auto;margin-top:0" onclick="avPublicarUma(' + id + ')">✅ Publicar</button>';
+    h += '<button class="btn btn-ghost btn-sm" style="width:auto" onclick="avSalvarUma(' + id + ')">Salvar texto</button>';
+    h += '<button class="btn btn-ghost btn-sm" style="width:auto" onclick="avIgnorar(' + id + ')">Ignorar</button>';
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+async function avLoad() {
+  if (!document.getElementById('tab-avaliacoes')) return;
+  document.getElementById('av-cards').innerHTML = '<div class="loading">Carregando...</div>';
+  const st = await avChamar({ action: 'status' }, false);
+  if (st && st.ok) avStatus = st;
+  const { data: itens } = await sb.from('shopee_itens').select('item_id,item_name');
+  avNomes = {};
+  (itens || []).forEach(function (i) { avNomes[String(i.item_id)] = i.item_name || ''; });
+  await avCarregarContagens();
+  avRenderTopo();
+  await avCarregarLista();
+  if (avStatus && !avStatus.senha_definida && avStatus.pode_definir_senha && isAdmin()) avMostrarSenha();
+}
+
+async function avRecarregar() { await avCarregarContagens(); avRenderTopo(); await avCarregarLista(); }
+
+async function avAtualizar() {
+  if (avOcupado) return; avOcupado = true;
+  avProgresso('Buscando avaliações novas na Shopee...');
+  const d = await avChamar({ action: 'sync_comments', max_paginas: 3 }, false);
+  avProgresso('');
+  avOcupado = false;
+  if (!d) return;
+  if (d.ok) toast(d.novas > 0 ? (d.novas + ' avaliação(ões) nova(s).') : 'Nenhuma avaliação nova.');
+  else toast('Erro ao buscar: ' + ((d.erro && (d.erro.message || d.erro.error)) || 'desconhecido'), 'error');
+  avRecarregar();
+}
+
+async function avGerarRascunhos() {
+  if (bloquearSeNaoAdmin()) return;
+  if (avOcupado) return; avOcupado = true;
+  avProgresso('Gerando rascunhos...');
+  const d = await avChamar({ action: 'gerar_rascunhos', limite_ia: 40 }, true);
+  avProgresso('');
+  avOcupado = false;
+  if (!d) return;
+  let msg = (d.por_variacao + d.por_ia) + ' rascunho(s) gerado(s)';
+  if (d.aguardando_ia > 0) msg += d.ia_configurada ? (' · ' + d.aguardando_ia + ' ainda na fila da IA (clique de novo)') : (' · ' + d.aguardando_ia + ' com texto aguardando a chave da IA');
+  if (d.erros_ia && d.erros_ia.length) msg += ' · erro da IA: ' + d.erros_ia[0];
+  toast(msg, d.erros_ia && d.erros_ia.length ? 'error' : 'success');
+  avRecarregar();
+}
+
+function avLinha(id) { return avLinhas.find(function (x) { return String(x.comment_id) === String(id); }); }
+
+async function avSalvarUma(id, silencioso) {
+  if (bloquearSeNaoAdmin()) return false;
+  const ta = document.getElementById('av-txt-' + id);
+  const texto = ta ? ta.value.trim() : '';
+  if (!texto) { toast('Escreva a resposta antes de salvar.', 'error'); return false; }
+  const d = await avChamar({ action: 'salvar_rascunho', comment_id: id, texto: texto }, true);
+  if (!d) return false;
+  if (!d.ok) { toast(d.error || 'Não foi possível salvar.', 'error'); return false; }
+  if (!silencioso) { toast('Texto salvo. Ficou na fila "Para aprovar".'); avRecarregar(); }
+  return true;
+}
+
+async function avPublicarUma(id) {
+  if (bloquearSeNaoAdmin()) return;
+  if (avOcupado) return;
+  const a = avLinha(id);
+  const ta = document.getElementById('av-txt-' + id);
+  const texto = ta ? ta.value.trim() : '';
+  if (!texto) { toast('Escreva a resposta antes de publicar.', 'error'); return; }
+  if (!confirm('Publicar esta resposta na Shopee?\n\nA resposta fica pública na página do produto.')) return;
+  avOcupado = true;
+  if (!a || texto !== String(a.rascunho || '').trim()) {
+    const ok = await avSalvarUma(id, true);
+    if (!ok) { avOcupado = false; return; }
+  }
+  const d = await avChamar({ action: 'publicar', comment_ids: [id] }, true);
+  avOcupado = false;
+  if (!d) return;
+  if (d.publicadas > 0) {
+    toast('Resposta publicada na Shopee.');
+    if (typeof registrarLog === 'function') registrarLog('Avaliações', 'Resposta publicada (avaliação ' + id + ')');
+  } else {
+    toast('Não publicou: ' + ((d.detalhes && d.detalhes[0] && d.detalhes[0].erro) || 'verifique a aba "Com erro"'), 'error');
+  }
+  avRecarregar();
+}
+
+async function avIgnorar(id) {
+  if (bloquearSeNaoAdmin()) return;
+  const d = await avChamar({ action: 'ignorar', comment_ids: [id] }, true);
+  if (!d) return;
+  toast('Avaliação ignorada (não será respondida).');
+  avRecarregar();
+}
+
+async function avReabrir(id) {
+  if (bloquearSeNaoAdmin()) return;
+  const d = await avChamar({ action: 'reabrir', comment_ids: [id] }, true);
+  if (!d) return;
+  toast('Avaliação reaberta.');
+  avRecarregar();
+}
+
+async function avPublicarProntas() {
+  if (bloquearSeNaoAdmin()) return;
+  if (avOcupado) return;
+  const total = avContagens.pronta_auto || 0;
+  if (total === 0) { toast('Não há respostas prontas para publicar.'); return; }
+  if (!sessionStorage.getItem('bpr_av_pin')) { avMostrarSenha(); return; }
+  if (!confirm('Publicar ' + total + ' resposta(s) pronta(s) de 4 e 5 estrelas na Shopee?\n\nAs respostas ficam públicas. As de 3 estrelas ou menos NÃO entram aqui.')) return;
+  avOcupado = true;
+  let publicadas = 0, falhas = 0, voltas = 0;
+  while (voltas < 20) {
+    const { data } = await sb.from('shopee_avaliacoes').select('comment_id').eq('status', 'pronta_auto').order('data_avaliacao', { ascending: true }).limit(60);
+    const ids = (data || []).map(function (x) { return x.comment_id; });
+    if (ids.length === 0) break;
+    avProgresso('Publicando... ' + publicadas + ' de ' + total);
+    const d = await avChamar({ action: 'publicar', comment_ids: ids }, true);
+    if (!d) break;
+    publicadas += d.publicadas || 0;
+    falhas += d.falhas || 0;
+    if ((d.publicadas || 0) === 0) break; // nada andou nesta volta: para pra não ficar em laço
+    voltas++;
+  }
+  avProgresso('');
+  avOcupado = false;
+  toast(publicadas + ' publicada(s)' + (falhas > 0 ? (' · ' + falhas + ' com erro') : ''), falhas > 0 ? 'error' : 'success');
+  if (typeof registrarLog === 'function') registrarLog('Avaliações', publicadas + ' respostas publicadas em lote' + (falhas > 0 ? (' (' + falhas + ' com erro)') : ''));
+  avRecarregar();
+}
+
+async function avToggleAuto() {
+  if (bloquearSeNaoAdmin()) return;
+  const ligar = !(avStatus && avStatus.auto_ativo);
+  const msg = ligar
+    ? 'Ligar o automático?\n\nA cada 15 minutos o sistema vai publicar sozinho as respostas "Prontas" de 4 e 5 estrelas. As de 3 estrelas ou menos e as que a IA marcar para revisão continuam esperando você.'
+    : 'Desligar o automático? Nada mais será publicado sem você clicar.';
+  if (!confirm(msg)) return;
+  const d = await avChamar({ action: 'set_auto', ativo: ligar }, true);
+  if (!d || !d.ok) return;
+  if (avStatus) avStatus.auto_ativo = d.auto_ativo;
+  toast(d.auto_ativo ? 'Automático ligado.' : 'Automático desligado.');
+  if (typeof registrarLog === 'function') registrarLog('Avaliações', d.auto_ativo ? 'Automático ligado' : 'Automático desligado');
+  avRenderTopo();
 }
 
 // ===================== SINCRONIZAR (relay para botões reais) =====================
