@@ -1145,7 +1145,7 @@ tr:hover td { background: rgba(0,0,0,0.02); }
 <!-- LUCRO POR PRODUTO -->
 <section id="tab-lucroproduto" class="section">
   <div class="page-header">
-    <div><div class="page-title">📈 Lucro por Produto</div><div class="page-sub">Venda − Custo do produto − ADS − Imposto da nota, por produto e por pedido (Shopee)</div></div>
+    <div><div class="page-title">📈 Lucro por Produto</div><div class="page-sub">Venda − Taxas Shopee − Custo do produto − ADS − Imposto da nota, por produto e por pedido (Shopee)</div></div>
   </div>
 
   <div class="panel" style="padding:0.75rem 1rem;margin-bottom:1rem">
@@ -1153,7 +1153,7 @@ tr:hover td { background: rgba(0,0,0,0.02); }
   </div>
 
   <div class="panel" id="lp-aviso-comissao" style="margin-bottom:1rem;background:var(--yellow-bg,#fef3c7);border-color:rgba(217,119,6,0.3);color:#92400e;font-size:12.5px">
-    ⏳ A comissão de afiliado ainda não entra nesse cálculo — a API da Shopee pra isso (AMS) ainda não foi liberada pro nosso app. Por enquanto o lucro aqui é <b>Venda − Custo do produto − ADS − Imposto da nota</b>. Assim que a Shopee liberar, eu incluo automaticamente.
+    ⏳ A comissão de afiliado ainda não entra nesse cálculo — a API da Shopee pra isso (AMS) ainda não foi liberada pro nosso app. Por enquanto o lucro aqui é <b>Venda − Taxas Shopee − Custo do produto − ADS − Imposto da nota</b>. Assim que a Shopee liberar, eu incluo automaticamente.
   </div>
 
   <div class="panel" id="lp-aviso-imposto" style="display:none;margin-bottom:1rem;font-size:12.5px;color:var(--text2)"></div>
@@ -1168,7 +1168,7 @@ tr:hover td { background: rgba(0,0,0,0.02); }
     </div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Produto</th><th>Qtd. vendida</th><th>Faturamento</th><th>Custo</th><th>ADS</th><th>Imposto</th><th>Lucro</th><th>Margem</th><th></th></tr></thead>
+        <thead><tr><th>Produto</th><th>Qtd. vendida</th><th>Faturamento</th><th>Taxas Shopee</th><th>Custo</th><th>ADS</th><th>Imposto</th><th>Lucro</th><th>Margem</th><th></th></tr></thead>
         <tbody id="lp-produtos-body"></tbody>
       </table>
     </div>
@@ -1182,7 +1182,7 @@ tr:hover td { background: rgba(0,0,0,0.02); }
     <div style="padding:0 1.25rem 0.5rem;font-size:11.5px;color:var(--text2)">Aqui ADS e comissão não aparecem por pedido — a Shopee só informa isso agregado por produto/dia, não por pedido individual.</div>
     <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
       <table>
-        <thead><tr><th>Data</th><th>Pedido</th><th>Qtd</th><th>Venda</th><th>Custo</th><th>Nota fiscal</th><th>Imposto</th><th>Lucro bruto</th></tr></thead>
+        <thead><tr><th>Data</th><th>Pedido</th><th>Qtd</th><th>Venda</th><th>Taxas Shopee</th><th>Custo</th><th>Nota fiscal</th><th>Imposto</th><th>Lucro</th></tr></thead>
         <tbody id="lp-pedidos-body"></tbody>
       </table>
     </div>
@@ -2605,16 +2605,20 @@ async function lpLoad() {
     const porItemId = {};
     (produtos || []).forEach(p => { if (p.shopee_item_id) porItemId[String(p.shopee_item_id)] = p; });
 
-    // status de cada pedido no período (pra excluir cancelados)
+    // status e repasse líquido de cada pedido no período (pra excluir cancelados e calcular as taxas reais)
     const statusPorPedido = {};
+    const liquidoPorPedido = {};
     {
       let pg = 0; const PAGE = 1000;
       while (true) {
         const { data: chunk, error } = await sb.from('extrato_marketplace')
-          .select('order_sn,status').eq('marketplace', 'Shopee')
+          .select('order_sn,status,liquido').eq('marketplace', 'Shopee')
           .gte('data', ini).lte('data', fim).range(pg * PAGE, pg * PAGE + PAGE - 1);
         if (error) throw error;
-        (chunk || []).forEach(r => { statusPorPedido[r.order_sn] = r.status; });
+        (chunk || []).forEach(r => {
+          statusPorPedido[r.order_sn] = r.status;
+          if (r.status === 'realizado' && Number(r.liquido) !== 0) liquidoPorPedido[r.order_sn] = Number(r.liquido);
+        });
         if (!chunk || chunk.length < PAGE) break;
         pg++;
       }
@@ -2674,6 +2678,58 @@ async function lpLoad() {
       it.imposto = it.nota_valor * aliquota;
     });
 
+    // TAXAS DA SHOPEE por item
+    //  - pedido concluído: taxa REAL = venda dos itens − repasse líquido da Shopee (dividido entre os itens pelo valor)
+    //  - pedido ainda em andamento: estimativa = taxa real média do mesmo produto no período;
+    //    se o produto ainda não tem pedidos concluídos, usa a faixa da tabela "Taxas das plataformas" (comissão % + taxa fixa por unidade)
+    const faixasShopee = [];
+    {
+      const { data: tx, error } = await sb.from('taxas_plataforma').select('*').eq('plataforma', 'Shopee');
+      if (error) throw error;
+      (tx || []).forEach(f => faixasShopee.push(f));
+      faixasShopee.sort((a, b) => (Number(a.valor_minimo) || 0) - (Number(b.valor_minimo) || 0));
+    }
+    function taxaPelaTabela(it) {
+      if (!faixasShopee.length) return 0;
+      const unit = (Number(it.valor_total) || 0) / (Number(it.quantidade) || 1);
+      let f = faixasShopee[faixasShopee.length - 1];
+      for (const x of faixasShopee) {
+        const min = Number(x.valor_minimo) || 0;
+        const max = x.valor_maximo == null ? Infinity : Number(x.valor_maximo);
+        if (unit >= min && unit <= max) { f = x; break; }
+      }
+      return (Number(it.valor_total) || 0) * (Number(f.comissao_percentual) || 0) / 100
+        + (Number(f.taxa_fixa) || 0) * (Number(it.quantidade) || 1)
+        + (Number(it.valor_total) || 0) * (Number(f.frete_percentual) || 0) / 100;
+    }
+    const realPorProduto = {};
+    itens.forEach(it => {
+      const liq = liquidoPorPedido[it.order_sn];
+      if (liq == null) return;
+      const totPed = vendaPorPedido[it.order_sn] || 0;
+      const fatia = totPed > 0 ? (Number(it.valor_total) || 0) / totPed : 1;
+      it.taxa = (totPed - liq) * fatia;
+      it.taxa_tipo = 'real';
+      const k = String(it.item_id);
+      if (!realPorProduto[k]) realPorProduto[k] = { taxa: 0, fat: 0, n: 0 };
+      realPorProduto[k].taxa += it.taxa;
+      realPorProduto[k].fat += Number(it.valor_total) || 0;
+      realPorProduto[k].n++;
+    });
+    const pedidosTaxaEstimada = new Set();
+    itens.forEach(it => {
+      if (it.taxa_tipo === 'real') return;
+      const rp = realPorProduto[String(it.item_id)];
+      if (rp && rp.n >= 5 && rp.fat > 0) {
+        it.taxa = (Number(it.valor_total) || 0) * (rp.taxa / rp.fat);
+        it.taxa_tipo = 'media';
+      } else {
+        it.taxa = taxaPelaTabela(it);
+        it.taxa_tipo = 'tabela';
+      }
+      pedidosTaxaEstimada.add(it.order_sn);
+    });
+
     // ADS do período, somado por item_id
     const adsPorItem = {};
     {
@@ -2700,7 +2756,7 @@ async function lpLoad() {
           nome: prod ? prod.nome : (it.item_name || ('Item ' + it.item_id)),
           custoUnit: prod ? (Number(prod.custo) || 0) : null,
           vinculado: !!prod,
-          qtd: 0, faturamento: 0, custo: 0, imposto: 0,
+          qtd: 0, faturamento: 0, custo: 0, imposto: 0, taxas: 0,
           pedidos: [],
         };
       }
@@ -2708,6 +2764,7 @@ async function lpLoad() {
       g.qtd += it.quantidade;
       g.faturamento += Number(it.valor_total) || 0;
       g.imposto += it.imposto || 0;
+      g.taxas += it.taxa || 0;
       if (g.custoUnit != null) g.custo += g.custoUnit * it.quantidade; else semVinculoQtd += it.quantidade;
       g.pedidos.push(it);
     });
@@ -2715,13 +2772,15 @@ async function lpLoad() {
     const lista = Object.values(porProduto).sort((a, b) => b.faturamento - a.faturamento);
     lpCache = { produtos: lista };
 
-    let totFat = 0, totCusto = 0, totAds = 0, totImp = 0;
-    lista.forEach(g => { totFat += g.faturamento; totCusto += g.custo; totAds += adsPorItem[String(g.item_id)] || 0; totImp += g.imposto; });
-    const totLucro = totFat - totCusto - totAds - totImp;
+    let totFat = 0, totCusto = 0, totAds = 0, totImp = 0, totTax = 0;
+    lista.forEach(g => { totFat += g.faturamento; totCusto += g.custo; totAds += adsPorItem[String(g.item_id)] || 0; totImp += g.imposto; totTax += g.taxas; });
+    const totLucro = totFat - totTax - totCusto - totAds - totImp;
     const margem = totFat > 0 ? (totLucro / totFat * 100) : 0;
+    const taxPct = totFat > 0 ? (totTax / totFat * 100) : 0;
 
     cardsEl.innerHTML =
       lpCard('Faturamento', precFmt(totFat), 'var(--text)') +
+      lpCard('Taxas Shopee (' + taxPct.toFixed(1) + '%)', '− ' + precFmt(totTax), 'var(--red)') +
       lpCard('Custo do produto', '− ' + precFmt(totCusto), 'var(--red)') +
       lpCard('ADS', '− ' + precFmt(totAds), 'var(--red)') +
       lpCard('Imposto (' + (aliquota * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '% da nota)', '− ' + precFmt(totImp), 'var(--red)') +
@@ -2731,12 +2790,15 @@ async function lpLoad() {
     const avisoImp = document.getElementById('lp-aviso-imposto');
     if (avisoImp) {
       const totPedidos = Object.keys(vendaPorPedido).length;
-      if (totPedidos > 0 && pedidosSemNota.size > 0) {
-        avisoImp.style.display = 'block';
-        avisoImp.innerHTML = '🧾 ' + pedidosSemNota.size + ' de ' + totPedidos + ' pedido(s) desse período ainda não têm nota fiscal no sistema (nota ainda não emitida, ou ainda sendo importada) — o imposto deles ainda não entrou no cálculo.';
-      } else {
-        avisoImp.style.display = 'none';
+      const linhas = [];
+      if (totPedidos > 0 && pedidosTaxaEstimada.size > 0) {
+        linhas.push('💳 Taxas Shopee: real (repasse) nos pedidos concluídos; ' + pedidosTaxaEstimada.size + ' de ' + totPedidos + ' pedido(s) ainda não concluídos estão com a taxa <b>estimada</b> pela média real do produto (ou pela tabela da Precificação, se o produto ainda não tem pedidos concluídos).');
       }
+      if (totPedidos > 0 && pedidosSemNota.size > 0) {
+        linhas.push('🧾 ' + pedidosSemNota.size + ' de ' + totPedidos + ' pedido(s) desse período ainda não têm nota fiscal no sistema (nota ainda não emitida) — o imposto deles ainda não entrou no cálculo.');
+      }
+      avisoImp.style.display = linhas.length ? 'block' : 'none';
+      avisoImp.innerHTML = linhas.join('<br>');
     }
 
     if (semVinculoQtd > 0) {
@@ -2746,13 +2808,13 @@ async function lpLoad() {
     }
 
     if (!lista.length) {
-      bodyEl.innerHTML = '<tr><td colspan="9" class="empty">Nenhuma venda da Shopee nesse período.</td></tr>';
+      bodyEl.innerHTML = '<tr><td colspan="10" class="empty">Nenhuma venda da Shopee nesse período.</td></tr>';
       return;
     }
 
     bodyEl.innerHTML = lista.map(g => {
       const ads = adsPorItem[String(g.item_id)] || 0;
-      const lucro = g.faturamento - g.custo - ads - g.imposto;
+      const lucro = g.faturamento - g.taxas - g.custo - ads - g.imposto;
       const mar = g.faturamento > 0 ? (lucro / g.faturamento * 100) : 0;
       const cor = lucro >= 0 ? 'var(--green)' : 'var(--red)';
       const custoTxt = g.vinculado ? precFmt(g.custo) : '<span style="color:var(--text3)" title="produto sem vínculo com a Shopee">—</span>';
@@ -2760,6 +2822,7 @@ async function lpLoad() {
         '<td>' + g.nome + (g.vinculado ? '' : ' <span style="font-size:10px;color:#d97706">(sem vínculo)</span>') + '</td>' +
         '<td>' + g.qtd + '</td>' +
         '<td>' + precFmt(g.faturamento) + '</td>' +
+        '<td>' + precFmt(g.taxas) + (g.faturamento > 0 ? ' <span style="font-size:10px;color:var(--text3)">' + (g.taxas / g.faturamento * 100).toFixed(1) + '%</span>' : '') + '</td>' +
         '<td>' + custoTxt + '</td>' +
         '<td>' + (ads > 0 ? precFmt(ads) : '—') + '</td>' +
         '<td>' + (g.imposto > 0 ? precFmt(g.imposto) : '—') + '</td>' +
@@ -2770,7 +2833,7 @@ async function lpLoad() {
     }).join('');
   } catch (e) {
     cardsEl.innerHTML = '';
-    bodyEl.innerHTML = '<tr><td colspan="9" class="empty">Erro ao carregar: ' + (e.message || e) + '</td></tr>';
+    bodyEl.innerHTML = '<tr><td colspan="10" class="empty">Erro ao carregar: ' + (e.message || e) + '</td></tr>';
   }
 }
 
@@ -2782,7 +2845,8 @@ function lpVerPedidos(itemId) {
   const custoUnit = g.custoUnit;
   body.innerHTML = g.pedidos.slice().sort((a, b) => (a.data < b.data ? 1 : -1)).map(it => {
     const custoLinha = custoUnit != null ? custoUnit * it.quantidade : null;
-    const lucroLinha = custoLinha != null ? (Number(it.valor_total) - custoLinha - (it.imposto || 0)) : null;
+    const lucroLinha = custoLinha != null ? (Number(it.valor_total) - (it.taxa || 0) - custoLinha - (it.imposto || 0)) : null;
+    const taxaTxt = precFmt(it.taxa || 0) + (it.taxa_tipo === 'real' ? '' : ' <span style="font-size:10px;color:var(--text3)" title="pedido ainda não concluído: taxa estimada">(estim.)</span>');
     const cor = lucroLinha != null ? (lucroLinha >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text3)';
     const notaTxt = it.imposto != null ? ('Nº ' + (it.nota_numero || '?') + ' · ' + precFmt(it.nota_valor || 0)) : '<span style="color:var(--text3)">sem nota</span>';
     return '<tr>' +
@@ -2790,6 +2854,7 @@ function lpVerPedidos(itemId) {
       '<td>#' + it.order_sn + '</td>' +
       '<td>' + it.quantidade + '</td>' +
       '<td>' + precFmt(Number(it.valor_total) || 0) + '</td>' +
+      '<td>' + taxaTxt + '</td>' +
       '<td>' + (custoLinha != null ? precFmt(custoLinha) : '—') + '</td>' +
       '<td>' + notaTxt + '</td>' +
       '<td>' + (it.imposto != null ? precFmt(it.imposto) : '—') + '</td>' +
