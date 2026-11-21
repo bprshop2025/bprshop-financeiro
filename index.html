@@ -2600,7 +2600,7 @@ async function lpLoad() {
   try {
     const { ini, fim } = lpGetRange(lpPeriodoAtual);
 
-    const { data: produtos, error: e1 } = await sb.from('produtos_precificados').select('id,nome,custo,shopee_item_id');
+    const { data: produtos, error: e1 } = await sb.from('produtos_precificados').select('id,nome,custo,shopee_item_id,embalagem');
     if (e1) throw e1;
     const porItemId = {};
     (produtos || []).forEach(p => { if (p.shopee_item_id) porItemId[String(p.shopee_item_id)] = p; });
@@ -2738,10 +2738,19 @@ async function lpLoad() {
       const linha = (cfgPed || []).find(c => c.marketplace === 'Shopee');
       embalagemPedido = linha ? (Number(linha.embalagem_por_pedido) || 0) : 0;
     }
+    // cada produto pode ter a sua embalagem (Precificação → Vincular com a Shopee); sem valor próprio, usa o padrão.
+    // pedido com mais de um produto: vale a maior embalagem entre eles (uma caixa por pedido).
+    const embProduto = (it) => {
+      const p = porItemId[String(it.item_id)];
+      const v = p && p.embalagem != null && p.embalagem !== '' ? Number(p.embalagem) : NaN;
+      return isNaN(v) ? embalagemPedido : v;
+    };
+    const embPorPedido = {};
+    itens.forEach(it => { embPorPedido[it.order_sn] = Math.max(embPorPedido[it.order_sn] ?? 0, embProduto(it)); });
     itens.forEach(it => {
       const totPed = vendaPorPedido[it.order_sn] || 0;
       const fatia = totPed > 0 ? (Number(it.valor_total) || 0) / totPed : 1;
-      it.embalagem = embalagemPedido * fatia;
+      it.embalagem = (embPorPedido[it.order_sn] || 0) * fatia;
     });
 
     // ADS do período, somado por item_id
@@ -2799,7 +2808,7 @@ async function lpLoad() {
       lpCard('Custo do produto', '− ' + precFmt(totCusto), 'var(--red)') +
       lpCard('ADS', '− ' + precFmt(totAds), 'var(--red)') +
       lpCard('Imposto (' + (aliquota * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '% da nota)', '− ' + precFmt(totImp), 'var(--red)') +
-      lpCard('Embalagem (' + precFmt(embalagemPedido) + '/pedido)', '− ' + precFmt(totEmb), 'var(--red)') +
+      lpCard('Embalagem (padrão ' + precFmt(embalagemPedido) + '/pedido)', '− ' + precFmt(totEmb), 'var(--red)') +
       lpCard('Lucro', precFmt(totLucro), totLucro >= 0 ? 'var(--green)' : 'var(--red)') +
       lpCard('Margem', margem.toFixed(1) + '%', totLucro >= 0 ? 'var(--green)' : 'var(--red)');
 
@@ -3671,12 +3680,14 @@ function ppRenderVinculos() {
   if (!ppList.length) { el.innerHTML = '<div class="empty">Cadastre um produto acima primeiro.</div>'; return; }
   let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
     '<thead><tr style="text-align:left;color:#6b7280;border-bottom:1px solid #d1d5db">' +
-    '<th style="padding:6px">Produto</th><th style="padding:6px;width:220px">ID na Shopee</th><th style="padding:6px"></th></tr></thead><tbody>';
+    '<th style="padding:6px">Produto</th><th style="padding:6px;width:220px">ID na Shopee</th><th style="padding:6px;width:150px">Embalagem por pedido (R$)</th><th style="padding:6px"></th></tr></thead><tbody>';
   ppList.forEach(p => {
     html += '<tr style="border-bottom:1px solid #e5e7eb">' +
       '<td style="padding:6px">' + p.nome + '</td>' +
       '<td style="padding:6px"><input type="text" id="pp-item-' + p.id + '" value="' + (p.shopee_item_id || '') + '" placeholder="ex: 789012" ' +
       'style="width:180px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:3px 6px;font-family:\'DM Mono\',monospace"></td>' +
+      '<td style="padding:6px"><input type="text" id="pp-emb-' + p.id + '" value="' + (p.embalagem != null ? String(p.embalagem).replace('.', ',') : '') + '" placeholder="padrão" ' +
+      'style="width:90px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:3px 6px;font-family:\'DM Mono\',monospace"></td>' +
       '<td style="padding:6px"><button class="btn btn-ghost btn-sm" style="width:auto;padding:3px 8px" onclick="ppSalvarItemId(\'' + p.id + '\')">💾 Salvar</button></td>' +
       '</tr>';
   });
@@ -3690,12 +3701,17 @@ async function ppSalvarItemId(produtoId) {
   const raw = (inp.value || '').trim();
   const itemId = raw === '' ? null : parseInt(raw.replace(/\D/g, ''), 10);
   if (raw !== '' && (isNaN(itemId) || itemId <= 0)) { toast('ID inválido — use só números', 'error'); return; }
+  const embInp = document.getElementById('pp-emb-' + produtoId);
+  const embRaw = embInp ? (embInp.value || '').trim() : '';
+  const embNorm = embRaw.includes(',') ? embRaw.replace(/\./g, '').replace(',', '.') : embRaw;
+  const embalagem = embRaw === '' ? null : Number(embNorm);
+  if (embRaw !== '' && (isNaN(embalagem) || embalagem < 0)) { toast('Embalagem inválida — use um valor como 0,12', 'error'); return; }
   try {
-    const { error } = await sb.from('produtos_precificados').update({ shopee_item_id: itemId }).eq('id', produtoId);
+    const { error } = await sb.from('produtos_precificados').update({ shopee_item_id: itemId, embalagem }).eq('id', produtoId);
     if (error) throw error;
-    toast('Vínculo salvo 🔗');
+    toast('Salvo 🔗');
     const p = ppList.find(x => String(x.id) === String(produtoId));
-    if (p) p.shopee_item_id = itemId;
+    if (p) { p.shopee_item_id = itemId; p.embalagem = embalagem; }
   } catch (e) {
     toast('Erro ao salvar vínculo: ' + (e.message || e), 'error');
   }
